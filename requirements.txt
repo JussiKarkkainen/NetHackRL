@@ -1,0 +1,9 @@
+nle
+gym
+gymnasium
+numpy
+torch
+wandb
+matplotlib
+pillow
+opencv-python-headless

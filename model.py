@@ -13,7 +13,6 @@ from functools import reduce
 from matplotlib import pyplot as plt
 from PIL import Image, ImageDraw, ImageFont
 import cv2
-from preprocess import preprocess_char_image_cython
 
 COLORS = ["#000000", "#800000", "#008000", "#808000", "#000080", "#800080", "#008080",
           "#808080", "#C0C0C0", "#FF0000", "#00FF00", "#FFFF00", "#0000FF", "#FF00FF",
@@ -55,8 +54,19 @@ class CharToImage(gym.Wrapper):
   def _render_to_image(self, obs):
     chars = obs["tty_chars"][1:-2, :]
     colors = np.clip(obs["tty_colors"], 0, 15)
-    obs["rgb_image"] = preprocess_char_image_cython(chars, colors, self.cache_array)
     
+    # 11*chars.shape[0], 6*chars.shape[1] for full image
+    # 11 for better looking image
+    pixel_obs = np.zeros((9*12, 9*12, 3), dtype=np.float32)
+
+    for i in range(12): # chars.shape[0] for full screen
+      for j in range(12): # chars.shape[1] for full screen
+        color = colors[i][j]
+        char = self.cache_array[chars[i][j]][color]
+        pixel_obs[i*9:(i+1)*9, j*9:(j+1)*9, :] = char
+  
+    obs["rgb_image"] = pixel_obs
+
   def step(self, action):
     obs, reward, done, info = self.env.step(action)
     self._render_to_image(obs)
@@ -113,6 +123,7 @@ class NetHackEncoder(nn.Module):
     self.bl_conv_net = nn.Sequential(*bl_convs)
     self.bl_out_fc = nn.Sequential(nn.Linear(fc_dims["bl_in"], fc_dims["bl_hidden"]), nn.ELU(), \
                                    nn.Linear(fc_dims["bl_hidden"], fc_dims["bl_out"]))
+
     
   def forward(self, x_rgb, tl, bl, prev_action):
     B = x_rgb.shape[0]
@@ -158,7 +169,7 @@ class NetHackModel(nn.Module):
     return encodings
 
   def recurrent(self, encodings, h, c):
-    o, (h, c) = self.core(encodings, (h.contiguous().to(self.device), c.contiguous().to(self.device)))
+    o, (h, c) = self.core(encodings, (h.to(self.device), c.to(self.device)))
     action_dist = self.actor(o)
     value = self.critic(o)
     action_prob = F.softmax(action_dist, dim=-1)
@@ -270,11 +281,8 @@ def train(args):
   model.share_memory()
   model.train()
   optimizer = torch.optim.Adam(model.parameters(), lr=env_conf["lr"])
-  
-  mp.set_start_method('spawn')
+
   shared_queue = mp.Queue()
-  
-  model.to(device)
 
   workers = []
   for worker_id in range(env_conf["num_workers"]):
@@ -285,6 +293,8 @@ def train(args):
   print(f"Training on device {device}")
   print(f"Number of trainable parameters: {count_parameters(model)}")
   
+  model.to(device)
+  
   for training_step in range(env_conf["training_steps"]):
     st = time.perf_counter()
 
@@ -293,9 +303,8 @@ def train(args):
       rollout = shared_queue.get()
       if rollout: 
         all_rollouts.append(rollout)
-        log_rewards = torch.sum(rollout["rewards"], dim=[0, 1]).item()
         if os.getenv("LOG"):
-          wandb.log({"Reward": log_rewards})
+          wandb.log({"Reward": torch.sum(rollout["rewards"], dim=[0, 1]).item()})
 
     if not all_rollouts: 
       continue
@@ -305,7 +314,7 @@ def train(args):
       for key in all_rollouts[0]
     }
 
-    returns = compute_returns(buffer["rewards"].cpu()).to(device)
+    returns = compute_returns(buffer["rewards"])
 
     advantages = returns - buffer["values"]
     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-10)
@@ -318,10 +327,6 @@ def train(args):
       wandb.log({"Loss": loss})
 
     et = time.perf_counter()
-    with open("runlogs/log.txt", "a") as f:
-      f.write(f"Reward: {log_rewards}\n")
-      f.write(f"Loss: {loss.item()}\n")
-
     print(f"Single training step took: {et - st} seconds")
     print(f"Loss on episode: {training_step} was {loss.item():.4f}")
 
@@ -345,13 +350,13 @@ def evaluate_model(model_path):
     rewards = []
     h, c = model.init_lstm()
     while not done:
-      rgb_image = torch.from_numpy(state["rgb_image"]).unsqueeze(0).permute(0, 3, 1, 2).to(device) # B, C, H, W
-      tl, bl = torch.from_numpy(state["tty_chars"][0, :]).long().unsqueeze(0).to(device), torch.from_numpy(state["tty_chars"][-2:, :]).float().unsqueeze(0).to(device)
-      prev_action = torch.from_numpy(state["prev_actions"]).unsqueeze(dim=0).to(device)
+      rgb_image = torch.from_numpy(state["rgb_image"]).unsqueeze(0).permute(0, 3, 1, 2) # B, C, H, W
+      tl, bl = torch.from_numpy(state["tty_chars"][0, :]).long().unsqueeze(0), torch.from_numpy(state["tty_chars"][-2:, :]).float().unsqueeze(0)
+      prev_action = torch.from_numpy(state["prev_actions"])
       action_dist, valuem, _ = model(rgb_image, tl, bl, prev_action, h, c)
       action_dist = action_dist.squeeze()
       action = torch.multinomial(action_dist, num_samples=1)
-      next_state, reward, done, info = env.step(action.cpu().item())
+      next_state, reward, done, info = env.step(action.item())
       # env.render()
       rewards.append(reward)
       if done:
@@ -360,9 +365,6 @@ def evaluate_model(model_path):
     print(f"Reward on Eval episode: {eval_episode} was: {episode_reward}")
     avg_rewards.append(episode_reward)
   print(f"Average reward over 10 episodes was: {sum(avg_rewards) / len(avg_rewards)}")
-  with open("runlogs/eval.txt", "w") as f:
-    f.write(f"Average reward over 10 episodes was: {sum(avg_rewards) / len(avg_rewards)}")
-    f.write(f"Succesfully ran code and wrote logs to file runlogs/log.txt")
 
 score_conf = {
     "conv_channels": [32, 64, 128, 128],
@@ -384,7 +386,7 @@ score_conf = {
 
 def make_config(args):
   env_conf = {
-    "default_model_path": f"runlogs/run-{time.strftime('%Y%m%d-%H%M%S')}.pt",
+    "default_model_path": f"checkpoints/run-{time.strftime('%Y%m%d-%H%M%S')}.pt",
     "max_env_steps": 10000,
     "seq_len": 256,
     "lr": 3e-4,
@@ -403,7 +405,7 @@ if __name__ == "__main__":
   parser.add_argument("--eval", help="Eval a given model, include a path to model file", 
                       action="store_true")
   parser.add_argument("--checkpoint_path", help="Path to a model", default=None)
-  parser.add_argument("--training_steps", type=int, help="Number of training steps, default: 10", default=10)
+  parser.add_argument("--training_steps", type=int, help="Number of training steps, default: 200", default=200)
   parser.add_argument("--num_data_workers", type=int, help="Number of data workers, default: 2", default=2)
   args = parser.parse_args()
   if torch.cuda.is_available():
@@ -413,7 +415,8 @@ if __name__ == "__main__":
   if args.eval:
     if not args.checkpoint_path:
       raise Exception("No model path specified for evaluation")
-    evaluate_model(args.checkpoint_path)
+    model_path = args.checkpoint_path
+    evaluate_model(model_path)
     exit()
     
   train(args)
