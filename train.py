@@ -1,5 +1,5 @@
 import nle
-import gym
+import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn as nn
@@ -18,8 +18,8 @@ COLORS = ["#000000", "#800000", "#008000", "#808000", "#000080", "#800080", "#00
           "#808080", "#C0C0C0", "#FF0000", "#00FF00", "#FFFF00", "#0000FF", "#FF00FF",
           "#00FFFF", "#FFFFFF"]
 
-def cache_ascii_char(rescale_font_size=9):
-  font = ImageFont.truetype("Hack-Regular.ttf", 9)
+def cache_ascii_char(env_conf, rescale_font_size=9):
+  font = ImageFont.truetype(env_conf["font_path"], 9)
   dummy_text = "".join([(chr(i) if chr(i).isprintable() else " ") for i in range(256)])
   bboxes = np.array([font.getbbox(char) for char in dummy_text])
   image_width = bboxes[:, 2].max() # 6
@@ -47,9 +47,9 @@ def cache_ascii_char(rescale_font_size=9):
   return char_array
 
 class CharToImage(gym.Wrapper):
-  def __init__(self, env):
+  def __init__(self, env, env_conf):
     super().__init__(env)
-    self.cache_array = cache_ascii_char()
+    self.cache_array = cache_ascii_char(env_conf)
 
   def _render_to_image(self, obs):
     chars = obs["tty_chars"][1:-2, :]
@@ -68,14 +68,14 @@ class CharToImage(gym.Wrapper):
     obs["rgb_image"] = pixel_obs
 
   def step(self, action):
-    obs, reward, done, info = self.env.step(action)
+    obs, reward, terminated, truncated, info = self.env.step(action)
     self._render_to_image(obs)
-    return obs, reward, done, info
+    return obs, reward, terminated, truncated, info
 
   def reset(self, **kwargs):
-    obs = self.env.reset(**kwargs)
+    obs, info = self.env.reset(**kwargs)
     self._render_to_image(obs)
-    return obs
+    return obs, info
 
 class PrevActionsWrapper(gym.Wrapper):
   def __init__(self, env):
@@ -87,15 +87,15 @@ class PrevActionsWrapper(gym.Wrapper):
 
   def reset(self, **kwargs):
     self.prev_action = 0
-    obs = self.env.reset(**kwargs)
+    obs, info = self.env.reset(**kwargs)
     obs["prev_actions"] = np.array([self.prev_action])
-    return obs
+    return obs, info
 
   def step(self, action):
-    obs, reward, done, info = self.env.step(action)
+    obs, reward, terminated, truncated, info = self.env.step(action)
     self.prev_action = action
     obs["prev_actions"] = np.array([self.prev_action])
-    return obs, reward, done, info
+    return obs, reward, terminated, truncated, info
 
 class NetHackEncoder(nn.Module):
   def __init__(self, conv_channels, fc_dims, bl_conv_dims):
@@ -169,7 +169,7 @@ class NetHackModel(nn.Module):
     return encodings
 
   def recurrent(self, encodings, h, c):
-    o, (h, c) = self.core(encodings, (h.to(self.device), c.to(self.device)))
+    o, (h, c) = self.core(encodings, (h.contiguous().to(self.device), c.contiguous().to(self.device)))
     action_dist = self.actor(o)
     value = self.critic(o)
     action_prob = F.softmax(action_dist, dim=-1)
@@ -227,12 +227,12 @@ def ppo_update(model, optimizer, states_rgb, states_tl, states_bl, actions,
 
 def data_worker(worker_id, env_conf, model, device, shared_queue, args):
   env = gym.make(args.env)
-  env = CharToImage(env)
+  env = CharToImage(env, env_conf)
   env = PrevActionsWrapper(env)
 
   while True:
     done = False
-    state = env.reset()
+    state, info = env.reset()
 
     h, c = model.init_lstm()
 
@@ -249,7 +249,8 @@ def data_worker(worker_id, env_conf, model, device, shared_queue, args):
       action_dist, value, (h, c) = model(rgb_image, tl, bl, prev_action, h, c)
       action = torch.multinomial(action_dist.squeeze(), num_samples=1).to(device)
 
-      next_state, reward, done, info = env.step(action.cpu().item())
+      next_state, reward, terminated, truncated, info = env.step(action.cpu().item())
+      done = terminated or truncated
 
       buffer["states_rgb"].append(rgb_image)
       buffer["states_tl"].append(tl)
@@ -281,8 +282,11 @@ def train(args):
   model.share_memory()
   model.train()
   optimizer = torch.optim.Adam(model.parameters(), lr=env_conf["lr"])
-
+  
+  mp.set_start_method('spawn')
   shared_queue = mp.Queue()
+  
+  model.to(device)
 
   workers = []
   for worker_id in range(env_conf["num_workers"]):
@@ -293,8 +297,6 @@ def train(args):
   print(f"Training on device {device}")
   print(f"Number of trainable parameters: {count_parameters(model)}")
   
-  model.to(device)
-  
   for training_step in range(env_conf["training_steps"]):
     st = time.perf_counter()
 
@@ -303,8 +305,9 @@ def train(args):
       rollout = shared_queue.get()
       if rollout: 
         all_rollouts.append(rollout)
+        log_rewards = torch.sum(rollout["rewards"], dim=[0, 1]).item()
         if os.getenv("LOG"):
-          wandb.log({"Reward": torch.sum(rollout["rewards"], dim=[0, 1]).item()})
+          wandb.log({"Reward": log_rewards})
 
     if not all_rollouts: 
       continue
@@ -314,7 +317,7 @@ def train(args):
       for key in all_rollouts[0]
     }
 
-    returns = compute_returns(buffer["rewards"])
+    returns = compute_returns(buffer["rewards"].cpu()).to(device)
 
     advantages = returns - buffer["values"]
     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-10)
@@ -327,6 +330,10 @@ def train(args):
       wandb.log({"Loss": loss})
 
     et = time.perf_counter()
+    with open(env_conf["log_path"], "a") as f:
+      f.write(f"Reward: {log_rewards}\n")
+      f.write(f"Loss: {loss.item()}\n")
+
     print(f"Single training step took: {et - st} seconds")
     print(f"Loss on episode: {training_step} was {loss.item():.4f}")
 
@@ -346,17 +353,17 @@ def evaluate_model(model_path):
   avg_rewards = []
   for eval_episode in range(10): # Average of 10 episodes
     done = False
-    state = env.reset()
+    state, info = env.reset()
     rewards = []
     h, c = model.init_lstm()
     while not done:
-      rgb_image = torch.from_numpy(state["rgb_image"]).unsqueeze(0).permute(0, 3, 1, 2) # B, C, H, W
-      tl, bl = torch.from_numpy(state["tty_chars"][0, :]).long().unsqueeze(0), torch.from_numpy(state["tty_chars"][-2:, :]).float().unsqueeze(0)
-      prev_action = torch.from_numpy(state["prev_actions"])
+      rgb_image = torch.from_numpy(state["rgb_image"]).unsqueeze(0).permute(0, 3, 1, 2).to(device) # B, C, H, W
+      tl, bl = torch.from_numpy(state["tty_chars"][0, :]).long().unsqueeze(0).to(device), torch.from_numpy(state["tty_chars"][-2:, :]).float().unsqueeze(0).to(device)
+      prev_action = torch.from_numpy(state["prev_actions"]).unsqueeze(dim=0).to(device)
       action_dist, valuem, _ = model(rgb_image, tl, bl, prev_action, h, c)
       action_dist = action_dist.squeeze()
       action = torch.multinomial(action_dist, num_samples=1)
-      next_state, reward, done, info = env.step(action.item())
+      next_state, reward, done, info = env.step(action.cpu().item())
       # env.render()
       rewards.append(reward)
       if done:
@@ -365,6 +372,8 @@ def evaluate_model(model_path):
     print(f"Reward on Eval episode: {eval_episode} was: {episode_reward}")
     avg_rewards.append(episode_reward)
   print(f"Average reward over 10 episodes was: {sum(avg_rewards) / len(avg_rewards)}")
+  with open(env_conf["eval_path"], "w") as f:
+    f.write(f"Average reward over 10 episodes was: {sum(avg_rewards) / len(avg_rewards)}")
 
 score_conf = {
     "conv_channels": [32, 64, 128, 128],
@@ -386,7 +395,10 @@ score_conf = {
 
 def make_config(args):
   env_conf = {
-    "default_model_path": f"checkpoints/run-{time.strftime('%Y%m%d-%H%M%S')}.pt",
+    "default_model_path": f"/workspace/runlogs/run-{time.strftime('%Y%m%d-%H%M%S')}.pt",
+    "font_path": "Hack-Regular.ttf" if os.getenv("DEV") == "1" else "/workspace/PPO_nethack/Hack-Regular.ttf",
+    "log_path": "runlogs/log.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/log.txt",
+    "eval_path": "runlogs/eval.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/eval.txt",
     "max_env_steps": 10000,
     "seq_len": 256,
     "lr": 3e-4,
@@ -405,7 +417,7 @@ if __name__ == "__main__":
   parser.add_argument("--eval", help="Eval a given model, include a path to model file", 
                       action="store_true")
   parser.add_argument("--checkpoint_path", help="Path to a model", default=None)
-  parser.add_argument("--training_steps", type=int, help="Number of training steps, default: 200", default=200)
+  parser.add_argument("--training_steps", type=int, help="Number of training steps, default: 500", default=500)
   parser.add_argument("--num_data_workers", type=int, help="Number of data workers, default: 2", default=2)
   args = parser.parse_args()
   if torch.cuda.is_available():
