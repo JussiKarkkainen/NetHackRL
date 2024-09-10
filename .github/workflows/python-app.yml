@@ -5,8 +5,7 @@ jobs:
   test:
     runs-on: self-hosted
     steps:
-      - run: git clone git@github.com:JussiKarkkainen/NetHackRL.git && cd NetHackRL
-      - run: python3 -m venv testrunner && source testrunner/bin/activate && pip3 install -r requirements.txt && pytest
-      - run: rm -fr testrunner
-      - run: cd .. && rm -fr NetHackRL
+      - run: git clone git@github.com:JussiKarkkainen/NetHackRL.git
+      - run: cd NetHackRL && python3 -m venv testrunner && source testrunner/bin/activate && pip3 install -r requirements.txt && pytest
+      - run: rm -fr NetHackRL
 
