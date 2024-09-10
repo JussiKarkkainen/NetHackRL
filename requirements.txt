@@ -7,3 +7,4 @@ wandb
 matplotlib
 pillow
 opencv-python-headless
+pytest
