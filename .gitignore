@@ -1,0 +1,5 @@
+runlogs
+netbuild
+*.pth
+*.db
+dataset/nld-aa-taster
