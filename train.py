@@ -344,8 +344,9 @@ def train(args):
   evaluate_model(env_conf["default_model_path"])
 
 def evaluate_model(model_path):
+  env_conf = make_config(args)
   env = gym.make(args.env)
-  env = CharToImage(env)
+  env = CharToImage(env, env_conf)
   env = PrevActionsWrapper(env)
   model = NetHackModel(score_conf, device)
   model.load_state_dict(torch.load(model_path))
@@ -363,8 +364,9 @@ def evaluate_model(model_path):
       action_dist, valuem, _ = model(rgb_image, tl, bl, prev_action, h, c)
       action_dist = action_dist.squeeze()
       action = torch.multinomial(action_dist, num_samples=1)
-      next_state, reward, done, info = env.step(action.cpu().item())
-      # env.render()
+      next_state, reward, terminated, truncated, info = env.step(action.cpu().item())
+      done = terminated or truncated
+      env.render()
       rewards.append(reward)
       if done:
         break
