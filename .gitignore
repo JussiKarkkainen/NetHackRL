@@ -3,3 +3,5 @@ netbuild
 *.pth
 *.db
 dataset/nld-aa-taster
+__pycache__/
+src/__pycache__/

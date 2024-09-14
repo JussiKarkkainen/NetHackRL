@@ -38,6 +38,25 @@ def cache_ascii_char(env_conf, rescale_font_size=9):
       char_array[char_index, color_index] = char
   return char_array
 
+def preprocess_dataset(obs, cache_array):
+  B, T = obs["tty_chars"].shape[:2]
+  chars = obs["tty_chars"][:, :, 1:-2, :]
+  colors = np.clip(obs["tty_colors"], 0, 15)
+  
+  # 11*chars.shape[0], 6*chars.shape[1] for full image
+  # 11 for better looking image
+  pixel_obs = np.zeros((B, T, 9*12, 9*12, 3), dtype=np.float32)
+
+  for b in range(B):
+    for t in range(T):
+      for i in range(12): # chars.shape[0] for full screen
+        for j in range(12): # chars.shape[1] for full screen
+          color = colors[b, t, i, j]
+          char = cache_array[chars[b, t, i, j]][color]
+          pixel_obs[b, t, i*9:(i+1)*9, j*9:(j+1)*9, :] = char
+
+  return pixel_obs
+
 class CharToImage(gym.Wrapper):
   def __init__(self, env, env_conf):
     super().__init__(env)

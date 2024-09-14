@@ -4,7 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-
 ### Implementations of pure functions for different training algorithms
 
 
@@ -55,6 +54,6 @@ def ppo_update(model, optimizer, states_rgb, states_tl, states_bl, actions,
 
 #### Behavioral Cloning
 
-def behavioral_cloning():
+def behavioural_cloning():
   pass
 
