@@ -75,19 +75,7 @@ def train_bc(model, optimizer, score_conf, env_conf):
     loss.backward()
     optimizer.step()
 
-def train(score_conf, env_conf):
-
-  if os.getenv("LOG"):
-    run = wandb.init(project=env_conf["project_name"], config=env_conf)
-
-  model = NetHackModel(score_conf, device)
-  model.train()
-  optimizer = torch.optim.Adam(model.parameters(), lr=env_conf["lr"])
-
-  if env_conf["alg_type"] == "behavioural_cloning":
-    train_bc(model, optimizer, score_conf, env_conf)
-    exit()
-  
+def train_ppo(model, optimizer, score_conf, env_conf):
   model.share_memory()
   mp.set_start_method('spawn')
   shared_queue = mp.Queue()
@@ -155,6 +143,7 @@ if __name__ == "__main__":
     device = torch.device("cuda")
   else:
     device = torch.device("cpu")
+  
   if env_conf["mode"] == "eval":
     if not env_conf["checkpoint_path"]:
       raise Exception("No model path specified for evaluation")
@@ -162,5 +151,16 @@ if __name__ == "__main__":
     evaluate_model(model_path)
     exit()
     
-  train(score_conf, env_conf)
+  if os.getenv("LOG"):
+    run = wandb.init(project=env_conf["project_name"], config=env_conf)
+
+  model = NetHackModel(score_conf, device)
+  model.train()
+  optimizer = torch.optim.Adam(model.parameters(), lr=env_conf["lr"])
+
+  match env_conf["alg_type"]:
+    case "behavioural_cloning":
+      train_bc(model, optimizer, score_conf, env_conf)
+    case "ppo":
+      train_ppo(model, optimizer, score_conf, env_conf)
   
