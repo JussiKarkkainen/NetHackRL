@@ -58,22 +58,37 @@ def train_bc(model, optimizer, score_conf, env_conf):
   data_gen = dataset(env_conf["batch_size"], env_conf["seq_len"])
   cache_array = cache_ascii_char(env_conf)
   loss_fn = nn.CrossEntropyLoss()
+  device_str = "cpu" if device == torch.device("cpu") else "cuda"
+  scaler = torch.GradScaler(device_str)
 
   for minibatch in data_gen:
     h, c = model.init_lstm(env_conf["batch_size"])
+    
     obs = torch.from_numpy(preprocess_dataset(minibatch, cache_array)["rgb_image"]).to(device)
     tl, bl = torch.from_numpy(minibatch["tty_chars"][:, :, 0, :]).long().to(device), torch.from_numpy(minibatch["tty_chars"][:, :, -2:, :]).float().to(device)
+    action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1]).to(device)
     prev_actions = minibatch["prev_actions"].to(device)
-    encodings = model.encode(obs, tl, bl, prev_actions)
-    action_dists, new_values, _ = model.recurrent(encodings, h, c)
-    action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
-    action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1])
-    loss = loss_fn(action_dists, action_targets)
-    print(f"Loss was: {loss}")
+    
+    if env_conf["amp"]:
+      with torch.autocast(device_str):
+        encodings = model.encode(obs, tl, bl, prev_actions)
+        action_dists, new_values, _ = model.recurrent(encodings, h, c)
+        action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
+        loss = loss_fn(action_dists, action_targets)
+      
+      scaler.scale(loss).backward()
+      scaler.step(optimizer)
+      scaler.update()
+    else:
+      encodings = model.encode(obs, tl, bl, prev_actions)
+      action_dists, new_values, _ = model.recurrent(encodings, h, c)
+      action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
+      loss = loss_fn(action_dists, action_targets)
+      optimizer.zero_grad()
+      loss.backward()
+      optimizer.step()
 
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+    print("Trained on one minibatch")
 
 def train_ppo(model, optimizer, score_conf, env_conf):
   model.share_memory()

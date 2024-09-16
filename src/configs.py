@@ -36,6 +36,7 @@ def make_configs():
     "batch_size": 32,
     "lr": 3e-4,
     "num_workers": 2,
+    "amp": False,           # Enable mixed precision training
     "training_steps": 500,
     "obs_image_shape": (108, 108),
     "obs_tl_shape": 80,
