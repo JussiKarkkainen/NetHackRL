@@ -163,4 +163,6 @@ if __name__ == "__main__":
       train_bc(model, optimizer, score_conf, env_conf)
     case "ppo":
       train_ppo(model, optimizer, score_conf, env_conf)
+    case _:
+      raise Exception("Invalid 'alg_type' provided in the config")
   
