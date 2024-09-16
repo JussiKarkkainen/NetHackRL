@@ -33,6 +33,7 @@ def make_configs():
     "alg_type": "behavioural_cloning",
     "max_env_steps": 10000,
     "seq_len": 256,
+    "batch_size": 32,
     "lr": 3e-4,
     "num_workers": 2,
     "training_steps": 500,

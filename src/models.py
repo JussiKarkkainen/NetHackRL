@@ -64,13 +64,18 @@ class NetHackModel(nn.Module):
     self.actor = nn.Linear(config["lstm_hidden"], config["actor_out"])
     self.critic = nn.Linear(config["lstm_hidden"], 1)
 
-  def init_lstm(self):
-    return torch.zeros((1, 1, self.config["lstm_hidden"])), torch.zeros((1, 1, self.config["lstm_hidden"]))
+  def init_lstm(self, batch_size=1):
+    return torch.zeros((1, batch_size, self.config["lstm_hidden"])), torch.zeros((1, batch_size, self.config["lstm_hidden"]))
 
   def encode(self, image, tl, bl, prev_action):
-    encodings = self.encoder(image, tl, bl, prev_action)
-    B, D = encodings.shape
-    encodings = encodings.unsqueeze(0)
+    image_enc = image
+    if len(image.shape) == 5:
+      image_enc = image.view(image.shape[0]*image.shape[1], image.shape[4], image.shape[2], image.shape[3])
+    encodings = self.encoder(image_enc, tl, bl, prev_action)
+    if len(image.shape) == 5:
+      encodings = encodings.view(image.shape[0], image.shape[1], -1)
+    else:
+      encodings = encodings.unsqueeze(0)
     return encodings
 
   def recurrent(self, encodings, h, c):

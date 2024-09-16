@@ -55,16 +55,25 @@ def evaluate_model(model_path):
 
 
 def train_bc(model, optimizer, score_conf, env_conf):
-  data_gen = dataset()
+  data_gen = dataset(env_conf["batch_size"], env_conf["seq_len"])
   cache_array = cache_ascii_char(env_conf)
   loss_fn = nn.CrossEntropyLoss()
 
   for minibatch in data_gen:
-    obs = preprocess_dataset(minibatch, cache_array).to(device)
-    tl, bl = torch.from_numpy(minibatch["tty_chars"][:, :, 0, :]).long().unsqueeze(0).to(device), torch.from_numpy(minibatch["tty_chars"][:, :, -2:, :]).float().unsqueeze(0).to(device)
-    encodings = model.encode(mb_states_rgb, mb_tl, mb_bl, mb_prev_actions)
-    action_dists, new_values, _ = model.recurrent(encodings, mb_h, mb_c)
+    h, c = model.init_lstm(env_conf["batch_size"])
+    obs = torch.from_numpy(preprocess_dataset(minibatch, cache_array)["rgb_image"]).to(device)
+    tl, bl = torch.from_numpy(minibatch["tty_chars"][:, :, 0, :]).long().to(device), torch.from_numpy(minibatch["tty_chars"][:, :, -2:, :]).float().to(device)
+    prev_actions = minibatch["prev_actions"].to(device)
+    encodings = model.encode(obs, tl, bl, prev_actions)
+    action_dists, new_values, _ = model.recurrent(encodings, h, c)
+    action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
+    action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1])
+    loss = loss_fn(action_dists, action_targets)
+    print(f"Loss was: {loss}")
 
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
 
 def train(score_conf, env_conf):
 
