@@ -19,9 +19,8 @@ from algs import ppo_update, compute_returns
 def count_parameters(model):
   return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def evaluate_model(model_path):
-  env_conf = make_config(args)
-  env = gym.make(args.env)
+def evaluate_model(model_path, score_conf, env_conf):
+  env = gym.make(enc_conf["env_name"], env_conf["character"])
   env = CharToImage(env, env_conf)
   env = PrevActionsWrapper(env)
   model = NetHackModel(score_conf, device)

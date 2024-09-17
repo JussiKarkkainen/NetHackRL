@@ -31,9 +31,10 @@ def make_configs():
     "log_path": "../runlogs/log.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/log.txt",
     "eval_path": "../runlogs/eval.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/eval.txt",
     "alg_type": "behavioural_cloning",
+    "character": "mon-hum-neu-mal",
     "max_env_steps": 10000,
-    "seq_len": 256,
-    "batch_size": 32,
+    "seq_len": 32,
+    "batch_size": 256,
     "lr": 3e-4,
     "num_workers": 2,
     "amp": False,           # Enable mixed precision training

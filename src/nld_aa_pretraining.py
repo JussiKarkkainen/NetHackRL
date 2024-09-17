@@ -15,11 +15,17 @@ def dataset(batch_size=32, seq_len=256):
 
   db_conn = nld.db.connect(filename=dbfilename)
 
+  # NetHackScore-v0 only has the role Human Monk.
+  subselect_sql = "SELECT gameid FROM games WHERE role=? AND race=?"
+  subselect_sql_args = ("Mon", "Hum")
+
   dataset = nld.TtyrecDataset(
     "taster-dataset",
     batch_size=batch_size,
     seq_length=seq_len,
     dbfilename=dbfilename,
+    subselect_sql=subselect_sql,
+    subselect_sql_args=subselect_sql_args
   )
 
   env = NetHackScore(savedir=None, character="@")

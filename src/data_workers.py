@@ -8,7 +8,7 @@ from preprocessing import CharToImage, PrevActionsWrapper
 
 
 def data_worker(worker_id, env_conf, model, device, shared_queue, args):
-  env = gym.make(args.env)
+  env = gym.make(env_conf["env_name"], env_conf["character"])
   env = CharToImage(env, env_conf)
   env = PrevActionsWrapper(env)
 
