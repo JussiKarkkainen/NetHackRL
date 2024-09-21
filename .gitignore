@@ -7,6 +7,7 @@ netbuild
 *.c
 *.so
 build/
+checkpoints/
 dataset/nld-aa-taster
 __pycache__/
 src/__pycache__/

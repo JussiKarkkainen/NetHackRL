@@ -20,7 +20,7 @@ def count_parameters(model):
   return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def evaluate_model(model_path, score_conf, env_conf):
-  env = gym.make(enc_conf["env_name"], env_conf["character"])
+  env = gym.make(env_conf["env_name"], character=env_conf["character"])
   env = CharToImage(env, env_conf)
   env = PrevActionsWrapper(env)
   model = NetHackModel(score_conf, device)
@@ -41,7 +41,7 @@ def evaluate_model(model_path, score_conf, env_conf):
       action = torch.multinomial(action_dist, num_samples=1)
       next_state, reward, terminated, truncated, info = env.step(action.cpu().item())
       done = terminated or truncated
-      env.render()
+      #env.render()
       rewards.append(reward)
       if done:
         break
@@ -59,8 +59,18 @@ def train_bc(model, optimizer, score_conf, env_conf):
   loss_fn = nn.CrossEntropyLoss()
   device_str = "cpu" if device == torch.device("cpu") else "cuda"
   scaler = torch.GradScaler(device_str)
+  
+  print(f"Training on device {device}")
+  print(f"Number of trainable parameters: {count_parameters(model)}")
 
+  cnt = 0
   for minibatch in data_gen:
+    if cnt == env_conf["training_steps"]:
+      print("Trained for {env_conf['training_steps']}, ending training")
+      break
+
+    st = time.perf_counter()
+
     h, c = model.init_lstm(env_conf["batch_size"])
     
     obs = torch.from_numpy(preprocess_dataset(minibatch, cache_array)["rgb_image"]).to(device)
@@ -75,6 +85,7 @@ def train_bc(model, optimizer, score_conf, env_conf):
         action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
         loss = loss_fn(action_dists, action_targets)
       
+      optimizer.zero_grad()
       scaler.scale(loss).backward()
       scaler.step(optimizer)
       scaler.update()
@@ -87,7 +98,15 @@ def train_bc(model, optimizer, score_conf, env_conf):
       loss.backward()
       optimizer.step()
 
-    print("Trained on one minibatch")
+    et = time.perf_counter()
+    
+    print(f"Single training step took: {et - st} seconds")
+    print(f"Loss on minibatch: {cnt} was {loss.item():.4f}")
+    cnt += 1
+  
+  torch.save(model.state_dict(), env_conf["default_model_path"])
+  evaluate_model(env_conf["default_model_path"], score_conf, env_conf)
+
 
 def train_ppo(model, optimizer, score_conf, env_conf):
   model.share_memory()
@@ -149,7 +168,7 @@ def train_ppo(model, optimizer, score_conf, env_conf):
     worker.terminate()
     
   torch.save(model.state_dict(), env_conf["default_model_path"])
-  evaluate_model(env_conf["default_model_path"])
+  evaluate_model(env_conf["default_model_path"], score_conf, env_conf)
 
 if __name__ == "__main__":
   score_conf, env_conf = make_configs()
@@ -162,7 +181,7 @@ if __name__ == "__main__":
     if not env_conf["checkpoint_path"]:
       raise Exception("No model path specified for evaluation")
     model_path = env_conf["checkpoint_path"]
-    evaluate_model(model_path)
+    evaluate_model(model_path, score_conf, env_conf)
     exit()
     
   if os.getenv("LOG"):

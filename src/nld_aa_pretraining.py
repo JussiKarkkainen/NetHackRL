@@ -28,6 +28,8 @@ def dataset(batch_size=32, seq_len=256):
     subselect_sql_args=subselect_sql_args
   )
 
+  print(f"Human Monk dataset has: {len(dataset._gameids)} games.")
+
   env = NetHackScore(savedir=None, character="@")
   embed_actions = torch.zeros((256, 1))
   for i, a in enumerate(env.actions):

@@ -25,8 +25,8 @@ def make_configs():
     "project_name": "BC_training",   # Used for wandb
     "env_name": "NetHackScore-v0",
     "mode": "training",             # "training" or "eval"
-    "checkpoint_path": None,        # if "eval" provide path to a model
-    "default_model_path": f"/workspace/runlogs/run-{time.strftime('%Y%m%d-%H%M%S')}.pt",
+    "checkpoint_path": "../checkpoints/run-20240921-221743.pt",        # if "eval" provide path to a model
+    "default_model_path": f"../checkpoints/run-{time.strftime('%Y%m%d-%H%M%S')}.pt" if os.getenv("DEV") == "1" else  f"/workspace/runlogs/run-{time.strftime('%Y%m%d-%H%M%S')}.pt",
     "font_path": "../Hack-Regular.ttf" if os.getenv("DEV") == "1" else "/workspace/PPO_nethack/Hack-Regular.ttf",
     "log_path": "../runlogs/log.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/log.txt",
     "eval_path": "../runlogs/eval.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/eval.txt",
@@ -34,11 +34,11 @@ def make_configs():
     "character": "mon-hum-neu-mal",
     "max_env_steps": 10000,
     "seq_len": 32,
-    "batch_size": 256,
+    "batch_size": 32,
     "lr": 3e-4,
     "num_workers": 2,
     "amp": False,           # Enable mixed precision training
-    "training_steps": 500,
+    "training_steps": 50,
     "obs_image_shape": (108, 108),
     "obs_tl_shape": 80,
     "obs_bl_shape": 80,
