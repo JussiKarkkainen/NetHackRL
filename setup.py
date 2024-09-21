@@ -1,17 +1,20 @@
-from setuptools import setup
-from setuptools.extension import Extension
+from setuptools import setup, Extension
 from Cython.Build import cythonize
 import numpy as np
+import os
+
+package_dir = os.path.join("src", "preprocess_cython")
 
 extensions = [
     Extension(
-        name="preprocess",
-        sources=["preprocess.pyx"],
+        "preprocess_cython.preprocess",              
+        [os.path.join(package_dir, "preprocess.pyx")], 
         include_dirs=[np.get_include()],
     )
 ]
 
 setup(
-    name="Preprocess",
     ext_modules=cythonize(extensions),
+    package_dir={"": "src"},  
+    packages=["preprocess_cython"],  
 )

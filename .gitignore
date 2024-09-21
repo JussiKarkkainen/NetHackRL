@@ -3,6 +3,10 @@ netbuild
 *.pth
 *.db
 *.swp
+*.o
+*.c
+*.so
+build/
 dataset/nld-aa-taster
 __pycache__/
 src/__pycache__/
