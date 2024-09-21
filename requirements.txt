@@ -5,6 +5,7 @@ numpy
 torch
 wandb
 matplotlib
+cython
 pillow
 opencv-python-headless
 pytest

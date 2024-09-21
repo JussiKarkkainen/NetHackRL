@@ -5,6 +5,7 @@ import torch
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 from matplotlib import pyplot as plt
+from preprocess_cython.preprocess import preprocess_char_image_cython
 import time
 
 COLORS = ["#000000", "#800000", "#008000", "#808000", "#000080", "#800080", "#008080",
