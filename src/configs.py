@@ -31,6 +31,7 @@ def make_configs():
     "log_path": "../runlogs/log.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/log.txt",
     "eval_path": "../runlogs/eval.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/eval.txt",
     "alg_type": "behavioural_cloning",
+    "max_norm": 0.5,
     "character": "mon-hum-neu-mal",
     "max_env_steps": 10000,
     "seq_len": 32,

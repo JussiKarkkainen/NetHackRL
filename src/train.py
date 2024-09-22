@@ -87,6 +87,8 @@ def train_bc(model, optimizer, score_conf, env_conf):
       
       optimizer.zero_grad()
       scaler.scale(loss).backward()
+      scaler.unscale_(optimizer)
+      torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=env_conf["max_norm"])
       scaler.step(optimizer)
       scaler.update()
     else:
@@ -96,6 +98,7 @@ def train_bc(model, optimizer, score_conf, env_conf):
       loss = loss_fn(action_dists, action_targets)
       optimizer.zero_grad()
       loss.backward()
+      torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=env_conf["max_norm"])
       optimizer.step()
 
     et = time.perf_counter()
