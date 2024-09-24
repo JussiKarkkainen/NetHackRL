@@ -8,6 +8,7 @@ netbuild
 *.so
 build/
 checkpoints/
-dataset/nld-aa-taster
+dataset/
+*.DS_Store
 __pycache__/
 src/__pycache__/
