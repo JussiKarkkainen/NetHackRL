@@ -34,9 +34,9 @@ def make_configs():
     "max_norm": 0.5,
     "character": "mon-hum-neu-mal",
     "max_env_steps": 10000,
-    "seq_len": 32,
-    "batch_size": 32,
-    "lr": 3e-4,
+    "seq_len": 64,
+    "batch_size": 128,
+    "lr": 1e-4,
     "num_workers": 2,
     "amp": False,           # Enable mixed precision training
     "training_steps": 50,

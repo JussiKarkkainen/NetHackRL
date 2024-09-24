@@ -3,47 +3,48 @@ import time
 import torch
 from nle.nethack import tty_render
 from nle.env.tasks import NetHackChallenge, NetHackScore
+from concurrent.futures import ThreadPoolExecutor
 
 def dataset(batch_size=32, seq_len=256):
-  path_to_nld_aa = "../dataset/nld-aa-taster/nld-aa-taster/nle_data"
+  path_to_nld_aa = "../dataset/nld-aa/nle_data"
 
-  dbfilename = "../dataset/nld_aa_ttyrecs.db"
+  dbfilename = "../dataset/nld_aa_actual_ttyrecs.db"
 
   if not nld.db.exists(dbfilename):
     nld.db.create(dbfilename)
-    nld.add_nledata_directory(path_to_nld_aa, "taster-dataset", dbfilename)
+    nld.add_nledata_directory(path_to_nld_aa, "nld_aa_actual", dbfilename)
 
   db_conn = nld.db.connect(filename=dbfilename)
 
-  # NetHackScore-v0 only has the role Human Monk.
   subselect_sql = "SELECT gameid FROM games WHERE role=? AND race=?"
   subselect_sql_args = ("Mon", "Hum")
 
-  dataset = nld.TtyrecDataset(
-    "taster-dataset",
-    batch_size=batch_size,
-    seq_length=seq_len,
-    dbfilename=dbfilename,
-    subselect_sql=subselect_sql,
-    subselect_sql_args=subselect_sql_args
-  )
+  with ThreadPoolExecutor(max_workers=10) as tp:
+    dataset = nld.TtyrecDataset(
+      "nld_aa_actual",
+      batch_size=batch_size,
+      seq_length=seq_len,
+      shuffle=True,
+      loop_forever=False,
+      dbfilename=dbfilename,
+      subselect_sql=subselect_sql,
+      subselect_sql_args=subselect_sql_args,
+      threadpool=tp
+    )
 
-  print(f"Human Monk dataset has: {len(dataset._gameids)} games.")
+    print(f"Human Monk dataset has: {len(dataset._gameids)} games.")
 
-  env = NetHackScore(savedir=None, character="@")
-  embed_actions = torch.zeros((256, 1))
-  for i, a in enumerate(env.actions):
-    embed_actions[a.value][0] = i
+    env = NetHackScore(savedir=None, character="@")
+    embed_actions = torch.zeros((256, 1))
+    for i, a in enumerate(env.actions):
+      embed_actions[a.value][0] = i
 
-  embed_actions = torch.nn.Embedding.from_pretrained(embed_actions)
+    embed_actions = torch.nn.Embedding.from_pretrained(embed_actions)
 
-  for minibatch in dataset:
-    keypresses = torch.Tensor(minibatch["keypresses"]).long()
-    actions = embed_actions(keypresses).squeeze(-1).long()
-    m = {k: minibatch[k] for k in ["tty_chars", "tty_colors", "done"]}
-    m["actions"] = actions
-    yield m
-
-if __name__ == "__main__":
-  dataset()
+    for minibatch in dataset:
+      keypresses = torch.Tensor(minibatch["keypresses"]).long()
+      actions = embed_actions(keypresses).squeeze(-1).long()
+      m = {k: minibatch[k] for k in ["tty_chars", "tty_colors", "done"]}
+      m["actions"] = actions
+      yield m
 
