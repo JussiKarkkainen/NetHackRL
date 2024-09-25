@@ -53,11 +53,9 @@ class NetHackModel:
   def __init__(self, config):
     self.config = config
     self.encoder = NetHackEncoder(conv_channels=config["conv_channels"], fc_dims=config["fc_dims"], bl_conv_dims=config["bl_conv_dims"])
-    '''
-    self.core = nn.LSTMCell(input_size=config["lstm_input"], hidden_size=config["lstm_hidden"], batch_first=True)
+    self.core = nn.LSTMCell(input_size=config["lstm_input"], hidden_size=config["lstm_hidden"])
     self.actor = nn.Linear(config["lstm_hidden"], config["actor_out"])
     self.critic = nn.Linear(config["lstm_hidden"], 1)
-    '''
 
   def init_lstm(self, batch_size=1):
     return Tensor.zeros((batch_size, self.config["lstm_hidden"])), Tensor.zeros((batch_size, self.config["lstm_hidden"]))
@@ -76,10 +74,16 @@ class NetHackModel:
     raise Exception
 
   def recurrent(self, encodings, h, c):
-    o, (h, c) = self.core(encodings, (h.contiguous().to(self.device), c.contiguous().to(self.device)))
+    h, c = h.contiguous(), c.contiguous()
+    o = []
+    for t in range(encodings.shape[1]):   # B, T, ...
+      h, c = self.core(encodings[:, t, ...], (h, c))
+      o.append(h.unsqueeze(1))
+
+    o = Tensor.cat(*o, dim=1)
     action_dist = self.actor(o)
     value = self.critic(o)
-    action_prob = F.softmax(action_dist, dim=-1)
+    action_prob = action_dist.log_softmax(axis=-1)
     return action_prob, value, (h, c)
 
   '''

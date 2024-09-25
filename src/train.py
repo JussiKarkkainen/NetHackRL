@@ -53,7 +53,7 @@ def evaluate_model(model_path, score_conf, env_conf):
   with open(env_conf["eval_path"], "w") as f:
     f.write(f"Average reward over 10 episodes was: {sum(avg_rewards) / len(avg_rewards)}")
 
-
+@Tensor.train()
 def train_bc(model, optimizer, score_conf, env_conf):
   data_gen = dataset(env_conf["batch_size"], env_conf["seq_len"])
   cache_array = cache_ascii_char(env_conf)
@@ -72,23 +72,24 @@ def train_bc(model, optimizer, score_conf, env_conf):
     
     obs = Tensor(preprocess_dataset(minibatch, cache_array)["rgb_image"])
     tl, bl = Tensor(minibatch["tty_chars"][:, :, 0, :]), Tensor(minibatch["tty_chars"][:, :, -2:, :]).float()
-    action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1])
+    action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1], 1)
     prev_actions = minibatch["prev_actions"]
     
     encodings = model.encode(obs, tl, bl, prev_actions)
     action_dists, new_values, _ = model.recurrent(encodings, h, c)
-    raise Exception
     action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
-    loss = loss_fn(action_dists, action_targets)
+    correct_log_probs = action_dists.gather(dim=1, index=action_targets)
+    loss = -correct_log_probs.mean()
     optimizer.zero_grad()
     loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=env_conf["max_norm"])
+    # TODO: Tinygrad gradient clipping
     optimizer.step()
 
     et = time.perf_counter()
     
     print(f"Single training step took: {et - st} seconds")
     print(f"Loss on minibatch: {cnt} was {loss.item():.4f}")
+    raise Exception
     cnt += 1
   
   torch.save(model.state_dict(), env_conf["default_model_path"])
