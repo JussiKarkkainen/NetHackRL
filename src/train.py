@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from tinygrad import Tensor, nn
 import wandb
 import time
 import os
@@ -17,7 +18,7 @@ from data_workers import data_worker
 from algs import ppo_update, compute_returns
 
 def count_parameters(model):
-  return sum(p.numel() for p in model.parameters() if p.requires_grad)
+  return sum(p.numel() for p in nn.state.get_parameters(model) if p.requires_grad)
 
 def evaluate_model(model_path, score_conf, env_conf):
   env = gym.make(env_conf["env_name"], character=env_conf["character"])
@@ -56,11 +57,7 @@ def evaluate_model(model_path, score_conf, env_conf):
 def train_bc(model, optimizer, score_conf, env_conf):
   data_gen = dataset(env_conf["batch_size"], env_conf["seq_len"])
   cache_array = cache_ascii_char(env_conf)
-  loss_fn = nn.CrossEntropyLoss()
-  device_str = "cpu" if device == torch.device("cpu") else "cuda"
-  scaler = torch.GradScaler(device_str)
   
-  print(f"Training on device {device}")
   print(f"Number of trainable parameters: {count_parameters(model)}")
 
   cnt = 0
@@ -73,33 +70,20 @@ def train_bc(model, optimizer, score_conf, env_conf):
 
     h, c = model.init_lstm(env_conf["batch_size"])
     
-    obs = torch.from_numpy(preprocess_dataset(minibatch, cache_array)["rgb_image"]).to(device)
-    tl, bl = torch.from_numpy(minibatch["tty_chars"][:, :, 0, :]).long().to(device), torch.from_numpy(minibatch["tty_chars"][:, :, -2:, :]).float().to(device)
-    action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1]).to(device)
-    prev_actions = minibatch["prev_actions"].to(device)
+    obs = Tensor(preprocess_dataset(minibatch, cache_array)["rgb_image"])
+    tl, bl = Tensor(minibatch["tty_chars"][:, :, 0, :]), Tensor(minibatch["tty_chars"][:, :, -2:, :]).float()
+    action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1])
+    prev_actions = minibatch["prev_actions"]
     
-    if env_conf["amp"]:
-      with torch.autocast(device_str):
-        encodings = model.encode(obs, tl, bl, prev_actions)
-        action_dists, new_values, _ = model.recurrent(encodings, h, c)
-        action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
-        loss = loss_fn(action_dists, action_targets)
-      
-      optimizer.zero_grad()
-      scaler.scale(loss).backward()
-      scaler.unscale_(optimizer)
-      torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=env_conf["max_norm"])
-      scaler.step(optimizer)
-      scaler.update()
-    else:
-      encodings = model.encode(obs, tl, bl, prev_actions)
-      action_dists, new_values, _ = model.recurrent(encodings, h, c)
-      action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
-      loss = loss_fn(action_dists, action_targets)
-      optimizer.zero_grad()
-      loss.backward()
-      torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=env_conf["max_norm"])
-      optimizer.step()
+    encodings = model.encode(obs, tl, bl, prev_actions)
+    action_dists, new_values, _ = model.recurrent(encodings, h, c)
+    raise Exception
+    action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
+    loss = loss_fn(action_dists, action_targets)
+    optimizer.zero_grad()
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=env_conf["max_norm"])
+    optimizer.step()
 
     et = time.perf_counter()
     
@@ -175,10 +159,6 @@ def train_ppo(model, optimizer, score_conf, env_conf):
 
 if __name__ == "__main__":
   score_conf, env_conf = make_configs()
-  if torch.cuda.is_available():
-    device = torch.device("cuda")
-  else:
-    device = torch.device("cpu")
   
   if env_conf["mode"] == "eval":
     if not env_conf["checkpoint_path"]:
@@ -190,9 +170,8 @@ if __name__ == "__main__":
   if os.getenv("LOG"):
     run = wandb.init(project=env_conf["project_name"], config=env_conf)
 
-  model = NetHackModel(score_conf, device)
-  model.train()
-  optimizer = torch.optim.Adam(model.parameters(), lr=env_conf["lr"])
+  model = NetHackModel(score_conf)
+  optimizer = nn.optim.Adam(nn.state.get_parameters(model), lr=env_conf["lr"])
 
   match env_conf["alg_type"]:
     case "behavioural_cloning":

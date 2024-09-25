@@ -1,7 +1,7 @@
 import nle
 import gymnasium as gym
 import numpy as np
-import torch
+from tinygrad import Tensor
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 from matplotlib import pyplot as plt
@@ -58,7 +58,7 @@ def preprocess_dataset(obs, cache_array):
           pixel_obs[b, t, i*9:(i+1)*9, j*9:(j+1)*9, :] = char
 
   obs["rgb_image"] = pixel_obs
-  prev_actions = torch.zeros_like(obs["actions"])
+  prev_actions = Tensor.zeros_like(obs["actions"]).contiguous()
   prev_actions[:, 1:] = obs["actions"][:, :-1]
   obs["prev_actions"] = prev_actions
   return obs
