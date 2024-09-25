@@ -9,3 +9,4 @@ cython
 pillow
 opencv-python-headless
 pytest
+python3 -m pip install git+https://github.com/tinygrad/tinygrad.git
