@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from tinygrad import Tensor, nn
+from tinygrad.helpers import Timing
 import wandb
 import time
 import os
@@ -20,13 +21,13 @@ from algs import ppo_update, compute_returns
 def count_parameters(model):
   return sum(p.numel() for p in nn.state.get_parameters(model) if p.requires_grad)
 
+@Tensor.test()
 def evaluate_model(model_path, score_conf, env_conf):
   env = gym.make(env_conf["env_name"], character=env_conf["character"])
   env = CharToImage(env, env_conf)
   env = PrevActionsWrapper(env)
-  model = NetHackModel(score_conf, device)
-  model.load_state_dict(torch.load(model_path))
-  model.eval()
+  model = NetHackModel(score_conf, use_critic=False)
+  nn.state.load_state_dict(model, nn.state.safe_load(model_path))
   avg_rewards = []
   for eval_episode in range(10): # Average of 10 episodes
     done = False
@@ -34,13 +35,12 @@ def evaluate_model(model_path, score_conf, env_conf):
     rewards = []
     h, c = model.init_lstm()
     while not done:
-      rgb_image = torch.from_numpy(state["rgb_image"]).unsqueeze(0).permute(0, 3, 1, 2).to(device) # B, C, H, W
-      tl, bl = torch.from_numpy(state["tty_chars"][0, :]).long().unsqueeze(0).to(device), torch.from_numpy(state["tty_chars"][-2:, :]).float().unsqueeze(0).to(device)
-      prev_action = torch.from_numpy(state["prev_actions"]).unsqueeze(dim=0).to(device)
-      action_dist, value, _ = model(rgb_image, tl, bl, prev_action, h, c)
-      action_dist = action_dist.squeeze()
-      action = torch.multinomial(action_dist, num_samples=1)
-      next_state, reward, terminated, truncated, info = env.step(action.cpu().item())
+      obs = Tensor(state["rgb_image"]).unsqueeze(dim=0).transpose(1, 3)
+      tl, bl = Tensor(state["tty_chars"][0, :]).unsqueeze(dim=0), Tensor(state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
+      prev_actions = Tensor(state["prev_actions"])
+      action_dist, _, (h, c) = model(obs, tl, bl, prev_actions, h, c)
+      action = action_dist.squeeze().multinomial(num_samples=1)
+      next_state, reward, terminated, truncated, info = env.step(action.item())
       done = terminated or truncated
       #env.render()
       rewards.append(reward)
@@ -75,16 +75,16 @@ def train_bc(model, optimizer, score_conf, env_conf):
     action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1], 1)
     prev_actions = minibatch["prev_actions"]
     
-    loss = bc_update(h, c, obs, tl, bl, action_targets, prev_actions)
+    with Timing("Time: "):
+      loss = bc_update(h, c, obs, tl, bl, action_targets, prev_actions)
 
     et = time.perf_counter()
     
-    print(f"Single training step took: {et - st} seconds")
+    # print(f"Single training step took: {et - st} seconds")
     print(f"Loss on minibatch: {cnt} was {loss.item():.4f}")
-    raise Exception
     cnt += 1
   
-  torch.save(model.state_dict(), env_conf["default_model_path"])
+  nn.state.safe_save(nn.state.get_state_dict(model), env_conf["default_model_path"])
   evaluate_model(env_conf["default_model_path"], score_conf, env_conf)
 
 

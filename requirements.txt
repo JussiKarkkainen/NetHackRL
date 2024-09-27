@@ -2,11 +2,11 @@ nle
 gym
 gymnasium
 numpy
-torch
 wandb
 matplotlib
 cython
 pillow
 opencv-python-headless
 pytest
-python3 -m pip install git+https://github.com/tinygrad/tinygrad.git
+git+https://github.com/tinygrad/tinygrad.git
+

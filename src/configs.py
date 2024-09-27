@@ -24,8 +24,8 @@ def make_configs():
   env_conf = {
     "project_name": "BC_training",   # Used for wandb
     "env_name": "NetHackScore-v0",
-    "mode": "training",             # "training" or "eval"
-    "checkpoint_path": "../checkpoints/run-20240921-221743.pt",        # if "eval" provide path to a model
+    "mode": "eval",             # "training" or "eval"
+    "checkpoint_path": "../checkpoints/run-20240927-224835.pt",        # if "eval" provide path to a model
     "default_model_path": f"../checkpoints/run-{time.strftime('%Y%m%d-%H%M%S')}.pt" if os.getenv("DEV") == "1" else  f"/workspace/runlogs/run-{time.strftime('%Y%m%d-%H%M%S')}.pt",
     "font_path": "../Hack-Regular.ttf" if os.getenv("DEV") == "1" else "/workspace/PPO_nethack/Hack-Regular.ttf",
     "log_path": "../runlogs/log.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/log.txt",
@@ -34,8 +34,8 @@ def make_configs():
     "max_norm": 0.5,
     "character": "mon-hum-neu-mal",
     "max_env_steps": 10000,
-    "seq_len": 64,
-    "batch_size": 128,
+    "seq_len": 32,
+    "batch_size": 64,
     "lr": 1e-4,
     "num_workers": 2,
     "amp": False,           # Enable mixed precision training
