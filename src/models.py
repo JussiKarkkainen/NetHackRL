@@ -50,30 +50,23 @@ class NetHackEncoder:
     return encodings
 
 class NetHackModel:
-  def __init__(self, config):
+  def __init__(self, config, use_critic=True):
     self.config = config
     self.encoder = NetHackEncoder(conv_channels=config["conv_channels"], fc_dims=config["fc_dims"], bl_conv_dims=config["bl_conv_dims"])
     self.core = nn.LSTMCell(input_size=config["lstm_input"], hidden_size=config["lstm_hidden"])
     self.actor = nn.Linear(config["lstm_hidden"], config["actor_out"])
-    self.critic = nn.Linear(config["lstm_hidden"], 1)
+    self.critic = nn.Linear(config["lstm_hidden"], 1) if use_critic else None
 
   def init_lstm(self, batch_size=1):
     return Tensor.zeros((batch_size, self.config["lstm_hidden"])), Tensor.zeros((batch_size, self.config["lstm_hidden"]))
 
-  def encode(self, image, tl, bl, prev_action):
+  def __call__(self, image, tl, bl, prev_action, h, c):
     is_batched = len(image.shape) == 5
     image_enc = image.view(image.shape[0] * image.shape[1], image.shape[4], image.shape[2], image.shape[3]) if is_batched else image
 
     encodings = self.encoder(image_enc, tl, bl, prev_action)
     encodings = encodings.view(image.shape[0], image.shape[1], -1) if is_batched else encodings.unsqueeze(0)
     
-    return encodings
-
-  def __call__(self, image, tl, bl, prev_action, h, c):
-    encodings = self.encode(image, tl, bl, prev_action)
-    raise Exception
-
-  def recurrent(self, encodings, h, c):
     h, c = h.contiguous(), c.contiguous()
     o = []
     for t in range(encodings.shape[1]):   # B, T, ...
@@ -82,13 +75,7 @@ class NetHackModel:
 
     o = Tensor.cat(*o, dim=1)
     action_dist = self.actor(o)
-    value = self.critic(o)
+    value = self.critic(o) if self.critic is not None else None
     action_prob = action_dist.log_softmax(axis=-1)
     return action_prob, value, (h, c)
 
-  '''
-  def forward(self, image, tl, bl, prev_action, h, c):
-    encodings = self.encode(image, tl, bl, prev_action)
-    action_prob, value, (h, c) = self.recurrent(encodings, h, c)
-    return action_prob, value, (h, c)
-  '''

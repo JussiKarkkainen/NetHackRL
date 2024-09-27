@@ -75,15 +75,7 @@ def train_bc(model, optimizer, score_conf, env_conf):
     action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1], 1)
     prev_actions = minibatch["prev_actions"]
     
-    encodings = model.encode(obs, tl, bl, prev_actions)
-    action_dists, new_values, _ = model.recurrent(encodings, h, c)
-    action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
-    correct_log_probs = action_dists.gather(dim=1, index=action_targets)
-    loss = -correct_log_probs.mean()
-    optimizer.zero_grad()
-    loss.backward()
-    # TODO: Tinygrad gradient clipping
-    optimizer.step()
+    loss = bc_update(h, c, obs, tl, bl, action_targets, prev_actions)
 
     et = time.perf_counter()
     
@@ -94,6 +86,18 @@ def train_bc(model, optimizer, score_conf, env_conf):
   
   torch.save(model.state_dict(), env_conf["default_model_path"])
   evaluate_model(env_conf["default_model_path"], score_conf, env_conf)
+
+
+def bc_update(h, c, obs, tl, bl, action_targets, prev_actions):
+  action_dists, _, _ = model(obs, tl, bl, prev_actions, h, c)
+  action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
+  correct_log_probs = action_dists.gather(dim=1, index=action_targets)
+  loss = -correct_log_probs.mean()
+  optimizer.zero_grad()
+  loss.realize().backward()
+  # TODO: Tinygrad gradient clipping
+  optimizer.step()
+  return loss.realize()
 
 
 def train_ppo(model, optimizer, score_conf, env_conf):
@@ -171,7 +175,7 @@ if __name__ == "__main__":
   if os.getenv("LOG"):
     run = wandb.init(project=env_conf["project_name"], config=env_conf)
 
-  model = NetHackModel(score_conf)
+  model = NetHackModel(score_conf, use_critic=False)
   optimizer = nn.optim.Adam(nn.state.get_parameters(model), lr=env_conf["lr"])
 
   match env_conf["alg_type"]:
