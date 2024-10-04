@@ -1,22 +1,18 @@
 import nle
 import gymnasium as gym
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from tinygrad import Tensor, nn
-from tinygrad.helpers import Timing
 import wandb
 import time
 import os
-import torch.multiprocessing as mp
+import multiprocessing as mp
 from functools import reduce
 from preprocessing import CharToImage, PrevActionsWrapper, cache_ascii_char, preprocess_dataset
 from nld_aa_pretraining import dataset
 from models import NetHackModel
 from configs import make_configs
 from data_workers import data_worker
-from algs import ppo_update, compute_returns
+from algs import ppo_update, compute_returns, bc_update
 
 def count_parameters(model):
   return sum(p.numel() for p in nn.state.get_parameters(model) if p.requires_grad)
@@ -75,7 +71,7 @@ def train_bc(model, optimizer, score_conf, env_conf):
     action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1], 1)
     prev_actions = minibatch["prev_actions"]
     
-    with Timing("Time: "):
+    with tinygrad.helpers.Timing("Time: "):
       loss = bc_update(h, c, obs, tl, bl, action_targets, prev_actions)
 
     et = time.perf_counter()
@@ -87,33 +83,23 @@ def train_bc(model, optimizer, score_conf, env_conf):
   nn.state.safe_save(nn.state.get_state_dict(model), env_conf["default_model_path"])
   evaluate_model(env_conf["default_model_path"], score_conf, env_conf)
 
-
-def bc_update(h, c, obs, tl, bl, action_targets, prev_actions):
-  action_dists, _, _ = model(obs, tl, bl, prev_actions, h, c)
-  action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
-  correct_log_probs = action_dists.gather(dim=1, index=action_targets)
-  loss = -correct_log_probs.mean()
-  optimizer.zero_grad()
-  loss.realize().backward()
-  # TODO: Tinygrad gradient clipping
-  optimizer.step()
-  return loss.realize()
-
-
-def train_ppo(model, optimizer, score_conf, env_conf):
-  model.share_memory()
+def train_ppo(model, score_conf, env_conf):
   mp.set_start_method('spawn')
-  shared_queue = mp.Queue()
-  
-  model.to(device)
+  data_queue = mp.Queue()
 
+  state_dict = nn.state.get_state_dict(model)
+  for k, v, in state_dict.items():
+    state_dict[k] = v.realize()
+  nn.state.load_state_dict(model, state_dict)
+  
+  optimizer = nn.optim.Adam(nn.state.get_parameters(model), lr=env_conf["lr"])
+  
   workers = []
-  for worker_id in range(env_conf["num_workers"]):
-    worker = mp.Process(target=data_worker, args=(worker_id, env_conf, model, device, shared_queue, args))
+  for _ in range(env_conf["num_workers"]):
+    worker = mp.Process(target=data_worker, args=(env_conf, model, data_queue))
     worker.start()
     workers.append(worker)
 
-  print(f"Training on device {device}")
   print(f"Number of trainable parameters: {count_parameters(model)}")
   
   for training_step in range(env_conf["training_steps"]):
@@ -121,10 +107,10 @@ def train_ppo(model, optimizer, score_conf, env_conf):
 
     all_rollouts = []
     for _ in range(env_conf["num_workers"]):
-      rollout = shared_queue.get()
+      rollout = data_queue.get()
       if rollout: 
         all_rollouts.append(rollout)
-        log_rewards = torch.sum(rollout["rewards"], dim=[0, 1]).item()
+        log_rewards = Tensor.sum(rollout["rewards"], dim=[0, 1]).item()
         if os.getenv("LOG"):
           wandb.log({"Reward": log_rewards})
 
@@ -132,11 +118,11 @@ def train_ppo(model, optimizer, score_conf, env_conf):
       continue
     
     buffer = {
-      key: torch.cat([r[key] for r in all_rollouts], dim=0)
+      key: Tensor.cat([r[key] for r in all_rollouts], dim=0)
       for key in all_rollouts[0]
     }
 
-    returns = compute_returns(buffer["rewards"].cpu()).to(device)
+    returns = compute_returns(buffer["rewards"])
 
     advantages = returns - buffer["values"]
     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-10)
@@ -159,7 +145,7 @@ def train_ppo(model, optimizer, score_conf, env_conf):
   for worker in workers:
     worker.terminate()
     
-  torch.save(model.state_dict(), env_conf["default_model_path"])
+  nn.state.safe_save(nn.state.get_state_dict(model), env_conf["default_model_path"])
   evaluate_model(env_conf["default_model_path"], score_conf, env_conf)
 
 if __name__ == "__main__":
@@ -176,13 +162,12 @@ if __name__ == "__main__":
     run = wandb.init(project=env_conf["project_name"], config=env_conf)
 
   model = NetHackModel(score_conf, use_critic=False)
-  optimizer = nn.optim.Adam(nn.state.get_parameters(model), lr=env_conf["lr"])
 
   match env_conf["alg_type"]:
     case "behavioural_cloning":
       train_bc(model, optimizer, score_conf, env_conf)
     case "ppo":
-      train_ppo(model, optimizer, score_conf, env_conf)
+      train_ppo(model, score_conf, env_conf)
     case _:
       raise Exception("Invalid 'alg_type' provided in the config")
   

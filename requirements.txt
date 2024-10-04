@@ -8,5 +8,5 @@ cython
 pillow
 opencv-python-headless
 pytest
-git+https://github.com/tinygrad/tinygrad.git
+git+https://github.com/tinygrad/tinygrad.git@master
 
