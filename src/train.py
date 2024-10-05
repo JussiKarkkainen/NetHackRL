@@ -76,7 +76,7 @@ def train_bc(model, optimizer, score_conf, env_conf):
 
     et = time.perf_counter()
     
-    # print(f"Single training step took: {et - st} seconds")
+    print(f"Single training step took: {et - st} seconds")
     print(f"Loss on minibatch: {cnt} was {loss.item():.4f}")
     cnt += 1
   
@@ -87,16 +87,14 @@ def train_ppo(model, score_conf, env_conf):
   mp.set_start_method('spawn')
   data_queue = mp.Queue()
 
-  state_dict = nn.state.get_state_dict(model)
-  for k, v, in state_dict.items():
-    state_dict[k] = v.realize()
-  nn.state.load_state_dict(model, state_dict)
+  os.makedirs(os.path.split(env_conf["model_storage"])[0], exist_ok=True)
+  nn.state.safe_save(nn.state.get_state_dict(model), env_conf["model_storage"])
   
   optimizer = nn.optim.Adam(nn.state.get_parameters(model), lr=env_conf["lr"])
-  
+
   workers = []
   for _ in range(env_conf["num_workers"]):
-    worker = mp.Process(target=data_worker, args=(env_conf, model, data_queue))
+    worker = mp.Process(target=data_worker, args=(env_conf, score_conf, data_queue))
     worker.start()
     workers.append(worker)
 
@@ -110,7 +108,7 @@ def train_ppo(model, score_conf, env_conf):
       rollout = data_queue.get()
       if rollout: 
         all_rollouts.append(rollout)
-        log_rewards = Tensor.sum(rollout["rewards"], dim=[0, 1]).item()
+        log_rewards = Tensor.sum(rollout["rewards"], axis=[0, 1]).item()
         if os.getenv("LOG"):
           wandb.log({"Reward": log_rewards})
 
@@ -118,18 +116,21 @@ def train_ppo(model, score_conf, env_conf):
       continue
     
     buffer = {
-      key: Tensor.cat([r[key] for r in all_rollouts], dim=0)
+      key: Tensor.cat(*[r[key] for r in all_rollouts], dim=0)
       for key in all_rollouts[0]
     }
 
     returns = compute_returns(buffer["rewards"])
 
-    advantages = returns - buffer["values"]
+    advantages = returns.squeeze() - buffer["values"].squeeze()
     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-10)
 
     loss = ppo_update(model, optimizer, buffer["states_rgb"], buffer["states_tl"], buffer["states_bl"],
                buffer["actions"], buffer["prev_actions"], returns, advantages, buffer["log_probs_old"],
                buffer["hiddens"], buffer["cells"])
+    
+    if training_step % env_conf["model_update_frequency"] == 0:
+      nn.state.safe_save(nn.state.get_state_dict(model), env_conf["model_storage"])
     
     if os.getenv("LOG"):
       wandb.log({"Loss": loss})
@@ -161,12 +162,13 @@ if __name__ == "__main__":
   if os.getenv("LOG"):
     run = wandb.init(project=env_conf["project_name"], config=env_conf)
 
-  model = NetHackModel(score_conf, use_critic=False)
 
   match env_conf["alg_type"]:
     case "behavioural_cloning":
+      model = NetHackModel(score_conf, use_critic=False)
       train_bc(model, optimizer, score_conf, env_conf)
     case "ppo":
+      model = NetHackModel(score_conf, use_critic=True)
       train_ppo(model, score_conf, env_conf)
     case _:
       raise Exception("Invalid 'alg_type' provided in the config")

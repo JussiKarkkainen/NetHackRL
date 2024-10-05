@@ -60,13 +60,15 @@ class NetHackModel:
   def init_lstm(self, batch_size=1):
     return Tensor.zeros((batch_size, self.config["lstm_hidden"])), Tensor.zeros((batch_size, self.config["lstm_hidden"]))
 
-  def __call__(self, image, tl, bl, prev_action, h, c):
+  def encode(self, image, tl, bl, prev_action):
     is_batched = len(image.shape) == 5
     image_enc = image.view(image.shape[0] * image.shape[1], image.shape[4], image.shape[2], image.shape[3]) if is_batched else image
 
     encodings = self.encoder(image_enc, tl, bl, prev_action)
     encodings = encodings.view(image.shape[0], image.shape[1], -1) if is_batched else encodings.unsqueeze(0)
-    
+    return encodings
+
+  def recurrent(self, encodings, h, c):
     h, c = h.contiguous(), c.contiguous()
     o = []
     for t in range(encodings.shape[1]):   # B, T, ...
@@ -78,4 +80,6 @@ class NetHackModel:
     value = self.critic(o) if self.critic is not None else None
     action_prob = action_dist.log_softmax(axis=-1)
     return action_prob, value, (h, c)
-
+    
+  def __call__(self, image, tl, bl, prev_action, h, c):
+    return self.recurrent(self.encode(image, tl, bl, prev_action), h, c)
