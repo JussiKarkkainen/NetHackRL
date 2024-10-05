@@ -2,10 +2,11 @@ nle
 gym
 gymnasium
 numpy
-torch
 wandb
 matplotlib
 cython
 pillow
 opencv-python-headless
 pytest
+git+https://github.com/tinygrad/tinygrad.git@master
+

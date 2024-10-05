@@ -1,7 +1,6 @@
 import time
 import os
 
-
 def make_configs():
   score_conf = {
       "conv_channels": [32, 64, 128, 128],
@@ -25,20 +24,21 @@ def make_configs():
     "project_name": "BC_training",   # Used for wandb
     "env_name": "NetHackScore-v0",
     "mode": "training",             # "training" or "eval"
-    "checkpoint_path": "../checkpoints/run-20240921-221743.pt",        # if "eval" provide path to a model
+    "checkpoint_path": "../checkpoints/run-20240927-224835.pt",        # if "eval" provide path to a model
     "default_model_path": f"../checkpoints/run-{time.strftime('%Y%m%d-%H%M%S')}.pt" if os.getenv("DEV") == "1" else  f"/workspace/runlogs/run-{time.strftime('%Y%m%d-%H%M%S')}.pt",
-    "font_path": "../Hack-Regular.ttf" if os.getenv("DEV") == "1" else "/workspace/PPO_nethack/Hack-Regular.ttf",
+    "model_storage": "../model_storage/model.safetensors" if os.getenv("DEV") == "1" else "/workspace/model_storage/model.safetensors",
+    "font_path": "../Hack-Regular.ttf" if os.getenv("DEV") == "1" else "/workspace/Hack-Regular.ttf",
     "log_path": "../runlogs/log.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/log.txt",
     "eval_path": "../runlogs/eval.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/eval.txt",
-    "alg_type": "behavioural_cloning",
+    "alg_type": "ppo",
     "max_norm": 0.5,
     "character": "mon-hum-neu-mal",
     "max_env_steps": 10000,
-    "seq_len": 64,
-    "batch_size": 128,
+    "model_update_frequency": 20,
+    "seq_len": 32,
+    "batch_size": 64,
     "lr": 1e-4,
     "num_workers": 2,
-    "amp": False,           # Enable mixed precision training
     "training_steps": 50,
     "obs_image_shape": (108, 108),
     "obs_tl_shape": 80,
