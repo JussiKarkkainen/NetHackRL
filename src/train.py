@@ -1,7 +1,7 @@
 import nle
 import gymnasium as gym
 import numpy as np
-from tinygrad import Tensor, nn, helpers
+from tinygrad import Tensor, nn, helpers, Device
 import wandb
 import time
 import os
@@ -161,6 +161,7 @@ if __name__ == "__main__":
   if os.getenv("LOG"):
     run = wandb.init(project=env_conf["project_name"], config=env_conf)
 
+  print(f"Training on device: {Device.DEFAULT}")
 
   match env_conf["alg_type"]:
     case "behavioural_cloning":

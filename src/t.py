@@ -7,7 +7,8 @@ def worker():
   print(a.add(b).sum().item())
 
 if __name__ == "__main__":
-  mp.set_start_method("spawn")
-  data_process = mp.Process(target=worker)
-  data_process.start()
+  #mp.set_start_method("spawn")
+  #data_process = mp.Process(target=worker)
+  #data_process.start()
+  worker()
   

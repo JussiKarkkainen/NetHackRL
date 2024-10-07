@@ -18,19 +18,35 @@ curl -C - -o dataset/nld-aa/nld-aa-dir-ao.zip https://dl.fbaipublicfiles.com/nld
 curl -C - -o dataset/nld-aa/nld-aa-dir-ap.zip https://dl.fbaipublicfiles.com/nld/nld-aa/nld-aa-dir-ap.zip
 
 unzip dataset/nld-aa/nld-aa-dir-aa.zip -d dataset/nld-aa 
+rm dataset/nld-aa/nld-aa-dir-aa.zip
 unzip dataset/nld-aa/nld-aa-dir-ab.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-ab.zip
 unzip dataset/nld-aa/nld-aa-dir-ac.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-ac.zip
 unzip dataset/nld-aa/nld-aa-dir-ad.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-ad.zip
 unzip dataset/nld-aa/nld-aa-dir-ae.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-ae.zip
 unzip dataset/nld-aa/nld-aa-dir-af.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-af.zip
 unzip dataset/nld-aa/nld-aa-dir-ag.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-ag.zip
 unzip dataset/nld-aa/nld-aa-dir-ah.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-ah.zip
 unzip dataset/nld-aa/nld-aa-dir-ai.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-ai.zip
 unzip dataset/nld-aa/nld-aa-dir-aj.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-aj.zip
 unzip dataset/nld-aa/nld-aa-dir-ak.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-ak.zip
 unzip dataset/nld-aa/nld-aa-dir-al.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-al.zip
 unzip dataset/nld-aa/nld-aa-dir-am.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-am.zip
 unzip dataset/nld-aa/nld-aa-dir-an.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-an.zip
 unzip dataset/nld-aa/nld-aa-dir-ao.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-ao.zip
 unzip dataset/nld-aa/nld-aa-dir-ap.zip -d dataset/nld-aa
+rm dataset/nld-aa/nld-aa-dir-ap.zip
 
