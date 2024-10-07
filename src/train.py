@@ -1,7 +1,7 @@
 import nle
 import gymnasium as gym
 import numpy as np
-from tinygrad import Tensor, nn
+from tinygrad import Tensor, nn, helpers
 import wandb
 import time
 import os
@@ -50,9 +50,11 @@ def evaluate_model(model_path, score_conf, env_conf):
     f.write(f"Average reward over 10 episodes was: {sum(avg_rewards) / len(avg_rewards)}")
 
 @Tensor.train()
-def train_bc(model, optimizer, score_conf, env_conf):
+def train_bc(model, score_conf, env_conf):
   data_gen = dataset(env_conf["batch_size"], env_conf["seq_len"])
   cache_array = cache_ascii_char(env_conf)
+  
+  optimizer = nn.optim.Adam(nn.state.get_parameters(model), lr=env_conf["lr"])
   
   print(f"Number of trainable parameters: {count_parameters(model)}")
 
@@ -62,8 +64,6 @@ def train_bc(model, optimizer, score_conf, env_conf):
       print("Trained for {env_conf['training_steps']}, ending training")
       break
 
-    st = time.perf_counter()
-
     h, c = model.init_lstm(env_conf["batch_size"])
     
     obs = Tensor(preprocess_dataset(minibatch, cache_array)["rgb_image"])
@@ -71,12 +71,9 @@ def train_bc(model, optimizer, score_conf, env_conf):
     action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1], 1)
     prev_actions = minibatch["prev_actions"]
     
-    with tinygrad.helpers.Timing("Time: "):
-      loss = bc_update(h, c, obs, tl, bl, action_targets, prev_actions)
+    with helpers.Timing("Time for update step: "):
+      loss = bc_update(model, optimizer, h, c, obs, tl, bl, action_targets, prev_actions)
 
-    et = time.perf_counter()
-    
-    print(f"Single training step took: {et - st} seconds")
     print(f"Loss on minibatch: {cnt} was {loss.item():.4f}")
     cnt += 1
   
@@ -87,6 +84,8 @@ def train_ppo(model, score_conf, env_conf):
   mp.set_start_method('spawn')
   data_queue = mp.Queue()
 
+  if os.path.exists(env_conf["model_storage"]):
+    os.remove(env_conf["model_storage"])
   os.makedirs(os.path.split(env_conf["model_storage"])[0], exist_ok=True)
   nn.state.safe_save(nn.state.get_state_dict(model), env_conf["model_storage"])
   
@@ -166,7 +165,7 @@ if __name__ == "__main__":
   match env_conf["alg_type"]:
     case "behavioural_cloning":
       model = NetHackModel(score_conf, use_critic=False)
-      train_bc(model, optimizer, score_conf, env_conf)
+      train_bc(model, score_conf, env_conf)
     case "ppo":
       model = NetHackModel(score_conf, use_critic=True)
       train_ppo(model, score_conf, env_conf)

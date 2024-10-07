@@ -30,7 +30,7 @@ def make_configs():
     "font_path": "../Hack-Regular.ttf" if os.getenv("DEV") == "1" else "/workspace/Hack-Regular.ttf",
     "log_path": "../runlogs/log.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/log.txt",
     "eval_path": "../runlogs/eval.txt" if os.getenv("DEV") == "1" else "/workspace/runlogs/eval.txt",
-    "alg_type": "ppo",
+    "alg_type": "behavioural_cloning",
     "max_norm": 0.5,
     "character": "mon-hum-neu-mal",
     "max_env_steps": 10000,

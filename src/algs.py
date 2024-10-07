@@ -55,7 +55,7 @@ def ppo_update(model, optimizer, states_rgb, states_tl, states_bl, actions,
 
 #### Behavioral Cloning
 
-def bc_update(h, c, obs, tl, bl, action_targets, prev_actions):
+def bc_update(model, optimizer, h, c, obs, tl, bl, action_targets, prev_actions):
   action_dists, _, _ = model(obs, tl, bl, prev_actions, h, c)
   action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)
   correct_log_probs = action_dists.gather(dim=1, index=action_targets)

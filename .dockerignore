@@ -1,2 +1,5 @@
 dataset/
 runlogs/*.txt
+checkpoints/
+model_storage/
+netbuild/

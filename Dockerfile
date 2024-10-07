@@ -6,5 +6,6 @@ WORKDIR /usr/src/app
 COPY . .
 
 RUN pip install --no-cache-dir -r requirements.txt
+RUN python3 setup.py build_ext --inplace
 
-CMD ["DEV=1", "python", "./src/train.py"]
+CMD ["DEV=1", "python3", "./src/train.py"]
