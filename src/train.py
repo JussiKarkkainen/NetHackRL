@@ -22,6 +22,11 @@ def evaluate_model(model_path, score_conf, env_conf):
   env = gym.make(env_conf["env_name"], character=env_conf["character"])
   env = CharToImage(env, env_conf)
   env = PrevActionsWrapper(env)
+
+  envs = [gym.make(env_conf["env_name"], character=env_conf["character"]) for _ in range(10)]  
+  envs = [CharToImage(env, env_conf) for env in envs]
+  envs = [PrevActionsWrapper(env) for env in envs]
+  
   model = NetHackModel(score_conf, use_critic=False)
   nn.state.load_state_dict(model, nn.state.safe_load(model_path))
   avg_rewards = []
