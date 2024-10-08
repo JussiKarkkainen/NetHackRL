@@ -19,35 +19,65 @@ def count_parameters(model):
 
 @Tensor.test()
 def evaluate_model(model_path, score_conf, env_conf):
-  env = gym.make(env_conf["env_name"], character=env_conf["character"])
-  env = CharToImage(env, env_conf)
-  env = PrevActionsWrapper(env)
+  envs = [gym.make(env_conf["env_name"], character=env_conf["character"]) for _ in range(10)]
+  envs = [CharToImage(env, env_conf) for env in envs]
+  envs = [PrevActionsWrapper(env) for env in envs] 
+
   model = NetHackModel(score_conf, use_critic=False)
   nn.state.load_state_dict(model, nn.state.safe_load(model_path))
+
   avg_rewards = []
-  for eval_episode in range(10): # Average of 10 episodes
-    done = False
-    state, info = env.reset()
-    rewards = []
-    h, c = model.init_lstm()
-    while not done:
-      obs = Tensor(state["rgb_image"]).unsqueeze(dim=0).transpose(1, 3)
-      tl, bl = Tensor(state["tty_chars"][0, :]).unsqueeze(dim=0), Tensor(state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
-      prev_actions = Tensor(state["prev_actions"])
-      action_dist, _, (h, c) = model(obs, tl, bl, prev_actions, h, c)
-      action = action_dist.squeeze().multinomial(num_samples=1)
-      next_state, reward, terminated, truncated, info = env.step(action.item())
-      done = terminated or truncated
-      #env.render()
-      rewards.append(reward)
-      if done:
-        break
-    episode_reward = sum(rewards)
-    print(f"Reward on Eval episode: {eval_episode} was: {episode_reward}")
-    avg_rewards.append(episode_reward)
+  states = []
+  dones = [False] * 10
+  h_list, c_list = zip(*[model.init_lstm() for _ in range(10)])
+
+  for env in envs:
+    state, _ = env.reset()
+    states.append(state)
+  
+  rewards_list = [[] for _ in range(10)]
+
+  while not all(dones):
+    obs_tensors, tl_tensors, bl_tensors, prev_actions_tensors = [], [], [], []
+    for i, (state, done) in enumerate(zip(states, dones)):
+      if not done:
+        obs = Tensor(state["rgb_image"]).unsqueeze(dim=0).transpose(1, 3)
+        tl = Tensor(state["tty_chars"][0, :]).unsqueeze(dim=0)
+        bl = Tensor(state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
+        prev_actions = Tensor(state["prev_actions"])
+
+        obs_tensors.append(obs)
+        tl_tensors.append(tl)
+        bl_tensors.append(bl)
+        prev_actions_tensors.append(prev_actions)
+
+    if obs_tensors:
+      obs_batch = Tensor.stack(*obs_tensors).transpose(2, 4)
+      tl_batch = Tensor.stack(*tl_tensors)
+      bl_batch = Tensor.stack(*bl_tensors)
+      prev_actions_batch = Tensor.stack(*prev_actions_tensors)
+      h_batch = Tensor.stack(*h_list).squeeze()
+      c_batch = Tensor.stack(*c_list).squeeze()
+
+      log_probs, _, (h_list, c_list) = model(obs_batch, tl_batch, bl_batch, prev_actions_batch.reshape(10, 1), h_batch, c_batch)
+      log_probs_s = log_probs.squeeze()
+      u = Tensor.uniform(shape=log_probs_s.shape)
+      actions = Tensor.argmax(log_probs_s - Tensor.log(-Tensor.log(u)), axis=-1)
+
+      for i, env in enumerate(envs):
+        if not dones[i]:
+          next_state, reward, terminated, truncated, info = env.step(actions[i].item())
+          rewards_list[i].append(reward)
+          dones[i] = terminated or truncated
+          if not dones[i]:
+            states[i] = next_state  # Update state for the environment
+          else:
+            avg_rewards.append(sum(rewards_list[i]))
+
   print(f"Average reward over 10 episodes was: {sum(avg_rewards) / len(avg_rewards)}")
   with open(env_conf["eval_path"], "w") as f:
     f.write(f"Average reward over 10 episodes was: {sum(avg_rewards) / len(avg_rewards)}")
+  
 
 @Tensor.train()
 def train_bc(model, score_conf, env_conf):
