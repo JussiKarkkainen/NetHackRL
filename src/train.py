@@ -38,6 +38,7 @@ def evaluate_model(model_path, score_conf, env_conf):
   rewards_list = [[] for _ in range(10)]
 
   while not all(dones):
+    print(f"Number of environments still running: {len([d for d in dones if d == False])}")
     obs_tensors, tl_tensors, bl_tensors, prev_actions_tensors = [], [], [], []
     for i, (state, done) in enumerate(zip(states, dones)):
       if not done:
@@ -104,6 +105,9 @@ def train_bc(model, score_conf, env_conf):
     with helpers.Timing("Time for update step: "):
       loss = bc_update(model, optimizer, h, c, obs, tl, bl, action_targets, prev_actions)
 
+    if os.getenv("LOG"):
+      wandb.log({"Loss": loss.item()})
+
     print(f"Loss on minibatch: {cnt} was {loss.item():.4f}")
     cnt += 1
   
@@ -162,7 +166,7 @@ def train_ppo(model, score_conf, env_conf):
       nn.state.safe_save(nn.state.get_state_dict(model), env_conf["model_storage"])
     
     if os.getenv("LOG"):
-      wandb.log({"Loss": loss})
+      wandb.log({"Loss": loss.item()})
 
     et = time.perf_counter()
     with open(env_conf["log_path"], "a") as f:

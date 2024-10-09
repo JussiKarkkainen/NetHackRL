@@ -34,10 +34,10 @@ def dataset(batch_size=32, seq_len=256):
 
     print(f"Human Monk dataset has: {len(dataset._gameids)} games.")
 
-    env = NetHackScore(savedir=None, character="@")
-    embed_actions = Tensor.zeros((256, 1))
+    env = NetHackScore(savedir=None, character="mon-hum-neu-mal")
+    embed_actions = Tensor.zeros((256, 1)).contiguous()
     for i, a in enumerate(env.actions):
-      embed_actions[a.value][0] = i
+      embed_actions[a.value, 0] = i
 
     embedding_layer = nn.Embedding(256, 1)
     embedding_layer.weight = embed_actions

@@ -23,7 +23,7 @@ def make_configs():
   env_conf = {
     "project_name": "BC_training",   # Used for wandb
     "env_name": "NetHackScore-v0",
-    "mode": "eval",             # "training" or "eval"
+    "mode": "training",             # "training" or "eval"
     "checkpoint_path": "../checkpoints/run-20240927-224835.pt",        # if "eval" provide path to a model
     "default_model_path": f"../checkpoints/run-{time.strftime('%Y%m%d-%H%M%S')}.pt" if os.getenv("DEV") == "1" else  f"/workspace/NetHackRL/runlogs/run-{time.strftime('%Y%m%d-%H%M%S')}.pt",
     "model_storage": "../model_storage/model.safetensors" if os.getenv("DEV") == "1" else "/workspace/NetHackRL/model_storage/model.safetensors",
@@ -39,7 +39,7 @@ def make_configs():
     "batch_size": 64,
     "lr": 1e-4,
     "num_workers": 2,
-    "training_steps": 10,
+    "training_steps": 4000,
     "obs_image_shape": (108, 108),
     "obs_tl_shape": 80,
     "obs_bl_shape": 80,
