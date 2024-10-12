@@ -1,5 +1,5 @@
 import numpy as np
-from tinygrad import Tensor
+from tinygrad import Tensor, TinyJit
 
 ### Implementations of pure functions for different training algorithms
 
@@ -13,6 +13,7 @@ def compute_returns(rewards, gamma=0.99):
     returns[:, t, :] = R
   return returns
 
+@TinyJit
 @Tensor.train()
 def ppo_update(model, optimizer, states_rgb, states_tl, states_bl, actions, 
                prev_actions, returns, advantages, old_log_probs, hiddens, cells, epsilon=0.2):
@@ -54,7 +55,7 @@ def ppo_update(model, optimizer, states_rgb, states_tl, states_bl, actions,
 
 
 #### Behavioral Cloning
-
+@TinyJit
 def bc_update(model, optimizer, h, c, obs, tl, bl, action_targets, prev_actions):
   action_dists, _, _ = model(obs, tl, bl, prev_actions, h, c)
   action_dists = action_dists.view(action_dists.shape[0]*action_dists.shape[1], -1)

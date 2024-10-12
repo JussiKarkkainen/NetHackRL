@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Gameplay Monitor</title>
+    <style>
+        .gameplay { text-align: center; margin-bottom: 20px; }
+        .dropdown { display: none; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Gameplay Monitor</h1>
+
+    <!-- Gameplay visualization -->
+    <div class="gameplay">
+        <h2>Agent's View</h2>
+        <canvas id="gameCanvas" width="320" height="240"></canvas>
+        <p>Action taken: <span id="actionTaken"></span></p>
+    </div>
+
+    <!-- Dropdown for activations -->
+    <div>
+        <button onclick="toggleDropdown('activationsDropdown')">Toggle Activations</button>
+        <div id="activationsDropdown" class="dropdown">
+            <h3>Activations</h3>
+            <pre id="activations"></pre>
+        </div>
+    </div>
+
+    <!-- Dropdown for weight stats -->
+    <div>
+        <button onclick="toggleDropdown('weightsDropdown')">Toggle Weights</button>
+        <div id="weightsDropdown" class="dropdown">
+            <h3>Weights Statistics</h3>
+            <pre id="weights"></pre>
+        </div>
+    </div>
+
+    <script>
+      // Fetch and render gameplay state
+      function updateGame() {
+          fetch('/init')  // Change this to /step for subsequent calls
+              .then(response => response.json())
+              .then(data => {
+                  // Draw environment state on canvas
+                  var canvas = document.getElementById('gameCanvas');
+                  var ctx = canvas.getContext('2d');
+                  var stateImage = data.state;  // Expecting a list
+                  console.log(stateImage);
+
+                  var imageData = ctx.createImageData(108, 108);  // 108x108 resolution
+                  for (let i = 0; i < 108; i++) {
+                      for (let j = 0; j < 108; j++) {
+                          imageData.data[i * (108 * 4) + j * 4 + 0] = stateImage[i][j][0]; // R
+                          imageData.data[i * (108 * 4) + j * 4 + 1] = stateImage[i][j][1]; // G
+                          imageData.data[i * (108 * 4) + j * 4 + 2] = stateImage[i][j][2]; // B
+                          imageData.data[i * (108 * 4) + j * 4 + 3] = 255;                 // Alpha
+                      }
+                  }
+                  ctx.putImageData(imageData, 0, 0);
+              });
+      }
+      
+      // Call updateGame on page load
+      window.onload = function() {
+          updateGame();
+      };
+    </script>
+</body>
+</html>
+

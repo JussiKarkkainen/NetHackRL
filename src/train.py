@@ -5,6 +5,7 @@ from tinygrad import Tensor, nn, helpers, Device
 import wandb
 import time
 import os
+import matplotlib.pyplot as plt
 import multiprocessing as mp
 from functools import reduce
 from preprocessing import CharToImage, PrevActionsWrapper, cache_ascii_char, preprocess_dataset
@@ -16,6 +17,43 @@ from algs import ppo_update, compute_returns, bc_update
 
 def count_parameters(model):
   return sum(p.numel() for p in nn.state.get_parameters(model) if p.requires_grad)
+
+@Tensor.test()
+def render_episode(model_path, score_conf, env_conf):
+  env = gym.make(env_conf["env_name"], character=env_conf["character"])
+  env = CharToImage(env, env_conf)
+  env = PrevActionsWrapper(env)
+  
+  model = NetHackModel(score_conf, use_critic=False)
+  nn.state.load_state_dict(model, nn.state.safe_load(model_path))
+
+  state, info = env.reset()
+  h, c = model.init_lstm()
+  done = False
+  step = 0
+  while not done:
+    obs = Tensor(state["rgb_image"]).unsqueeze(dim=0).transpose(1, 3)
+    tl = Tensor(state["tty_chars"][0, :]).unsqueeze(dim=0)
+    bl = Tensor(state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
+    prev_actions = Tensor(state["prev_actions"])
+
+    log_probs, _, (h_list, c_list) = model(obs, tl, bl, prev_actions, h, c)
+    log_probs_s = log_probs.squeeze()
+    u = Tensor.uniform(shape=log_probs_s.shape)
+    action = Tensor.argmax(log_probs_s - Tensor.log(-Tensor.log(u)), axis=-1)
+    
+    #env.render()
+    next_state, reward, terminated, truncated, info = env.step(action.item())
+    done = terminated or truncated
+    state = next_state
+    step += 1
+
+    if step % 100 == 0:
+      env.render()
+      plt.imshow(state["rgb_image"], interpolation='nearest')
+      plt.show()
+      raise Exception
+
 
 @Tensor.test()
 def evaluate_model(model_path, score_conf, env_conf):
@@ -37,8 +75,8 @@ def evaluate_model(model_path, score_conf, env_conf):
   
   rewards_list = [[] for _ in range(10)]
 
+  step = 0
   while not all(dones):
-    print(f"Number of environments still running: {len([d for d in dones if d == False])}")
     obs_tensors, tl_tensors, bl_tensors, prev_actions_tensors = [], [], [], []
     for i, (state, done) in enumerate(zip(states, dones)):
       if not done:
@@ -74,6 +112,10 @@ def evaluate_model(model_path, score_conf, env_conf):
             states[i] = next_state  # Update state for the environment
           else:
             avg_rewards.append(sum(rewards_list[i]))
+    step += 1
+    if step % 10 == 0:
+      print(f"Number of environments still running: {len([d for d in dones if d == False])}")
+
 
   print(f"Average reward over 10 episodes was: {sum(avg_rewards) / len(avg_rewards)}")
   with open(env_conf["eval_path"], "w") as f:
@@ -189,7 +231,10 @@ if __name__ == "__main__":
     if not env_conf["checkpoint_path"]:
       raise Exception("No model path specified for evaluation")
     model_path = env_conf["checkpoint_path"]
-    evaluate_model(model_path, score_conf, env_conf)
+    if os.getenv("VIZ") == "1":
+      render_episode(model_path, score_conf, env_conf)
+    else:
+      evaluate_model(model_path, score_conf, env_conf)
     exit()
     
   if os.getenv("LOG"):

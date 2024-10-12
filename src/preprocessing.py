@@ -63,6 +63,24 @@ def preprocess_dataset(obs, cache_array):
   obs["prev_actions"] = prev_actions
   return obs
 
+def preprocess_test(chars, colors, offset_h, offset_w, cache_array):
+  out_image = np.zeros((108, 108, 3), dtype=np.uint8)
+  for h in range(12):
+    h_char = h + offset_h
+    if h_char < 0 or h_char >= chars.shape[0]:
+      continue
+    for w in range(12):
+      w_char = w + offset_w
+      if w_char < 0 or w_char >= chars.shape[1]:
+        continue
+      char = chars[h_char, w_char]
+      color = colors[h_char, w_char]
+      h_pixel = h * 9
+      w_pixel = w * 9
+      out_image[h_pixel : h_pixel + 9, w_pixel : w_pixel + 9, :] = cache_array[char, color]
+
+  return out_image
+
 class CharToImage(gym.Wrapper):
   def __init__(self, env, env_conf):
     super().__init__(env)
@@ -70,19 +88,12 @@ class CharToImage(gym.Wrapper):
 
   def _render_to_image(self, obs):
     chars = obs["tty_chars"][1:-2, :]
-    colors = np.clip(obs["tty_colors"], 0, 15)
-    
-    # 11*chars.shape[0], 6*chars.shape[1] for full image
-    # 11 for better looking image
-    pixel_obs = np.zeros((9*12, 9*12, 3), dtype=np.float32)
+    colors = np.clip(obs["tty_colors"][1:-2, :], 0, 15)
+    center_y, center_x = obs["tty_cursor"]
 
-    for i in range(12): # chars.shape[0] for full screen
-      for j in range(12): # chars.shape[1] for full screen
-        color = colors[i][j]
-        char = self.cache_array[chars[i][j]][color]
-        pixel_obs[i*9:(i+1)*9, j*9:(j+1)*9, :] = char
-  
-    obs["rgb_image"] = pixel_obs
+    offset_h = center_y - 6
+    offset_w = center_x - 6
+    obs["rgb_image"] = preprocess_test(chars, colors, offset_h, offset_w, self.cache_array)
 
   def step(self, action):
     obs, reward, terminated, truncated, info = self.env.step(action)

@@ -1,4 +1,7 @@
 import numpy as np
+import nle
+import gymnasium as gym
+from preprocessing import CharToImage, PrevActionsWrapper, cache_ascii_char, preprocess_dataset
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from tinygrad import Tensor, nn
@@ -144,8 +147,58 @@ class NetHackVisualizer:
     with open("../reports/nethack_report.html", "w") as file:
       file.write(html_content)
 
+from flask import Flask, render_template, jsonify
+
+app = Flask(__name__)
+
+class _NetHackGame:
+  def __init__(self, model_path):
+    score_conf, env_conf = make_configs()
+    self.env = gym.make(env_conf["env_name"], character=env_conf["character"])
+    self.env = CharToImage(self.env, env_conf)
+    self.env = PrevActionsWrapper(self.env)
+
+    self.model = NetHackModel(score_conf, use_critic=False)
+    nn.state.load_state_dict(self.model, nn.state.safe_load(model_path))
+
+    self.state, info = self.env.reset()
+    self.h, self.c = self.model.init_lstm()
+    self.done = False
+
+  def step_game(self):
+    obs = Tensor(self.state["rgb_image"]).unsqueeze(dim=0).transpose(1, 3)
+    tl = Tensor(self.state["tty_chars"][0, :]).unsqueeze(dim=0)
+    bl = Tensor(self.state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
+    prev_actions = Tensor(self.state["prev_actions"])
+
+    log_probs, _, (h_list, c_list) = self.model(obs, tl, bl, prev_actions, h, c)
+    log_probs_s = log_probs.squeeze()
+    u = Tensor.uniform(shape=log_probs_s.shape)
+    action = Tensor.argmax(log_probs_s - Tensor.log(-Tensor.log(u)), axis=-1)
+    
+    next_state, reward, terminated, truncated, info = self.env.step(action.item())
+    self.done = terminated or truncated
+    self.state = next_state
+    return state, action.item()
+
+@app.route('/init')
+def init():
+  global NetHackGame
+  NetHackGame = _NetHackGame("../checkpoints/run-20241009-223400.pt")
+  init_state = NetHackGame.state
+  print(init_state["rgb_image"].shape)
+  return jsonify({"state": init_state["rgb_image"].tolist()})
+
+@app.route('/')
+def main():
+  return render_template("index.html")
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+'''
 if __name__ == "__main__":
-  visualizer = NetHackVisualizer("../checkpoints/run-20240927-224835.pt")
+  visualizer = NetHackVisualizer("../checkpoints/run-20241009-223400.pt")
   visualizer.analyze_weights()
   visualizer.generate_html_report()
-
+'''
