@@ -76,10 +76,10 @@ class NetHackModel:
       o.append(h.unsqueeze(1))
 
     o = Tensor.cat(*o, dim=1)
-    action_dist = self.actor(o)
+    action_logits = self.actor(o)
     value = self.critic(o) if self.critic is not None else None
-    action_prob = action_dist.log_softmax(axis=-1)
-    return action_prob, value, (h, c)
+    # action_prob = action_dist.log_softmax(axis=-1)
+    return action_logits, value, (h, c)
     
   def __call__(self, image, tl, bl, prev_action, h, c):
     return self.recurrent(self.encode(image, tl, bl, prev_action), h, c)

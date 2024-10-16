@@ -13,7 +13,7 @@ from nld_aa_pretraining import dataset
 from models import NetHackModel
 from configs import make_configs
 from data_workers import data_worker
-from algs import ppo_update, compute_returns, bc_update
+from algs import ppo_update, compute_returns, bc_update, bc_accuracy
 
 def count_parameters(model):
   return sum(p.numel() for p in nn.state.get_parameters(model) if p.requires_grad)
@@ -148,8 +148,15 @@ def train_bc(model, score_conf, env_conf):
     with helpers.Timing("Time for update step: "):
       loss = bc_update(model, optimizer, h, c, obs, tl, bl, action_targets, prev_actions)
 
+    if cnt % 100 == 0:
+      accuracy = bc_accuracy(model, h, c, obs, tl, bl, action_targets, prev_actions)
+      print(f"Accuracy on minibatch: {cnt} was {accuracy.item():.2f}%")
+      if os.getenv("LOG"):
+        wandb.log({"Accuracy": accuracy.item()})
+
     if os.getenv("LOG"):
       wandb.log({"Loss": loss.item()})
+
 
     print(f"Loss on minibatch: {cnt} was {loss.item():.4f}")
     cnt += 1
