@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weight Statistics</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        h1, h2 {
+            color: #2c3e50;
+        }
+        .weight-section {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Weight Statistics</h1>
+    
+    <div id="weightContent">
+        <!-- This content will be populated by the server -->
+    </div>
+
+    <script>
+        // Fetch weight statistics from the server
+        fetch('/get_weight_statistics')
+            .then(response => response.json())
+            .then(html => {
+                document.getElementById('weightContent').innerHTML = html.html;
+            })
+            .catch(error => {
+                console.error('Error fetching weight statistics:', error);
+                document.getElementById('weightContent').innerHTML = '<p>Error loading weight statistics. Please try again later.</p>';
+            });
+    </script>
+</body>
+</html>

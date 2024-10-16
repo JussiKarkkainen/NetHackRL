@@ -1,12 +1,18 @@
 import numpy as np
 import nle
+import glob
+import os
 import gymnasium as gym
 from preprocessing import CharToImage, PrevActionsWrapper, cache_ascii_char, preprocess_dataset
 import matplotlib.pyplot as plt
+import matplotlib
 from matplotlib.colors import Normalize
 from tinygrad import Tensor, nn
 from models import NetHackModel
 from configs import make_configs
+
+# Agg is a non-interactive backend that can only write to files.
+matplotlib.use('agg')
 
 def visualize_grid_of_filters(filters, title, save_path):
   num_filters = filters.shape[0]
@@ -90,7 +96,7 @@ def capture_activations(layer, activations_dict, layer_name):
     return output
   return wrapper
 
-class NetHackVisualizer:
+class _NetHackVisualizer:
   def __init__(self, model_path):
     score_conf, env_conf = make_configs()
     self.model = NetHackModel(score_conf, use_critic=False)
@@ -111,6 +117,10 @@ class NetHackVisualizer:
       visualize_grid_of_filters(activation, title=f"Activations: {layer_name}", save_path=f"../reports/{layer_name_act}.png")
 
   def analyze_weights(self):
+    files = glob.glob("../reports/*")
+    for f in files:
+      os.remove(f)
+    
     for key, value in self.state_dict.items():
       weight_matrix = value.numpy()
       print(f"Visualizing {key} with shape {weight_matrix.shape}")
@@ -137,19 +147,22 @@ class NetHackVisualizer:
 
         html_content += add_weight_statistics_to_html(stats, key)
 
-        image_path = f"{key}.png"
+        image_path = f"../reports/{key}.png"
 
         html_content += f"<h2>{key}</h2>\n"
         html_content += f'<img src="{image_path}" alt="{key}">\n'
 
     html_content += "</body></html>"
 
-    with open("../reports/nethack_report.html", "w") as file:
-      file.write(html_content)
+    return html_content
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, send_from_directory
 
 app = Flask(__name__)
+
+reports_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'reports')
+
+NetHackVisualizer = _NetHackVisualizer("../checkpoints/run-20241016-093314.pt")
 
 class _NetHackGame:
   def __init__(self, model_path):
@@ -171,7 +184,7 @@ class _NetHackGame:
     bl = Tensor(self.state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
     prev_actions = Tensor(self.state["prev_actions"])
 
-    log_probs, _, (h_list, c_list) = self.model(obs, tl, bl, prev_actions, h, c)
+    log_probs, _, (h_list, c_list) = self.model(obs, tl, bl, prev_actions, self.h, self.c)
     log_probs_s = log_probs.squeeze()
     u = Tensor.uniform(shape=log_probs_s.shape)
     action = Tensor.argmax(log_probs_s - Tensor.log(-Tensor.log(u)), axis=-1)
@@ -179,19 +192,45 @@ class _NetHackGame:
     next_state, reward, terminated, truncated, info = self.env.step(action.item())
     self.done = terminated or truncated
     self.state = next_state
-    return state, action.item()
+    return next_state, action.item(), reward, log_probs_s.numpy()
 
 @app.route('/init')
 def init():
   global NetHackGame
   NetHackGame = _NetHackGame("../checkpoints/run-20241009-223400.pt")
   init_state = NetHackGame.state
-  print(init_state["rgb_image"].shape)
   return jsonify({"state": init_state["rgb_image"].tolist()})
 
 @app.route('/')
 def main():
   return render_template("index.html")
+
+@app.route('/weight_statistics')
+def weights():
+  return render_template("weight_statistics.html")
+
+@app.route('/reports/<path:filename>')
+def serve_report(filename):
+  return send_from_directory(reports_dir, filename)
+
+@app.route('/get_weight_statistics')
+def weight_stats():
+  NetHackVisualizer.analyze_weights()
+  html = NetHackVisualizer.generate_html_report()
+  return jsonify({"html": html})
+
+@app.route('/reset')
+def reset():
+  global NetHackGame
+  NetHackGame = _NetHackGame("../checkpoints/run-20241009-223400.pt")
+  init_state = NetHackGame.state
+  return jsonify({"state": init_state["rgb_image"].tolist()})
+
+@app.route('/step')
+def step():
+  state, action, reward, log_probs = NetHackGame.step_game()
+  return jsonify({"state": state["rgb_image"].tolist(), "action": str(action), "reward": str(reward), "action_probabilities": log_probs.tolist()})
+  
 
 if __name__ == '__main__':
     app.run(debug=True)

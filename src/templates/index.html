@@ -4,69 +4,244 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent Gameplay Monitor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
     <style>
-        .gameplay { text-align: center; margin-bottom: 20px; }
-        .dropdown { display: none; margin-top: 10px; }
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .gameplay, .controls, .stats {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .gameplay {
+            flex: 2;
+            min-width: 300px;
+        }
+        .controls, .stats {
+            flex: 1;
+            min-width: 250px;
+        }
+        .state-transition {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .state {
+            text-align: center;
+        }
+        .action {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0 20px;
+        }
+        .action-arrow {
+            font-size: 24px;
+            margin: 10px 0;
+        }
+        canvas {
+            border: 1px solid #ddd;
+            max-width: 100%;
+            height: auto;
+        }
+        button {
+            background-color: #3498db;
+            color: #fff;
+            border: none;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .dropdown {
+            background-color: #ecf0f1;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        #activations {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        #actionChart {
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
-    <h1>Gameplay Monitor</h1>
-
-    <!-- Gameplay visualization -->
-    <div class="gameplay">
-        <h2>Agent's View</h2>
-        <canvas id="gameCanvas" width="320" height="240"></canvas>
-        <p>Action taken: <span id="actionTaken"></span></p>
-    </div>
-
-    <!-- Dropdown for activations -->
-    <div>
-        <button onclick="toggleDropdown('activationsDropdown')">Toggle Activations</button>
-        <div id="activationsDropdown" class="dropdown">
-            <h3>Activations</h3>
-            <pre id="activations"></pre>
+    <h1>Agent Gameplay Monitor</h1>
+    <div class="container">
+        <div class="gameplay">
+            <h2>Agent's View</h2>
+            <div class="state-transition">
+                <div class="state">
+                    <h3>Previous State</h3>
+                    <canvas id="previousCanvas" width="108" height="108"></canvas>
+                </div>
+                <div class="action">
+                    <span class="action-arrow">→</span>
+                    <span id="actionTaken">None</span>
+                </div>
+                <div class="state">
+                    <h3>Current State</h3>
+                    <canvas id="currentCanvas" width="108" height="108"></canvas>
+                </div>
+            </div>
+            <div id="actionChart">
+                <canvas id="actionBarChart"></canvas>
+            </div>
         </div>
-    </div>
-
-    <!-- Dropdown for weight stats -->
-    <div>
-        <button onclick="toggleDropdown('weightsDropdown')">Toggle Weights</button>
-        <div id="weightsDropdown" class="dropdown">
-            <h3>Weights Statistics</h3>
-            <pre id="weights"></pre>
+        <div class="controls">
+            <h2>Controls</h2>
+            <button id="stepButton">Step</button>
+            <button id="resetButton">Reset</button>
+            <button id="toggleActivations">Toggle Activations</button>
+            <button id="openWeights">View Weights</button>
+            <div id="activationsDropdown" class="dropdown" style="display:none;">
+                <h3>Activations</h3>
+                <pre id="activations">Activations will be displayed here</pre>
+            </div>
+        </div>
+        <div class="stats">
+            <h2>Statistics</h2>
+            <p>Steps: <span id="stepCount">0</span></p>
+            <p>Total Reward: <span id="totalReward">0</span></p>
+            <p>Current Reward: <span id="currentReward">0</span></p>
         </div>
     </div>
 
     <script>
-      // Fetch and render gameplay state
-      function updateGame() {
-          fetch('/init')  // Change this to /step for subsequent calls
-              .then(response => response.json())
-              .then(data => {
-                  // Draw environment state on canvas
-                  var canvas = document.getElementById('gameCanvas');
-                  var ctx = canvas.getContext('2d');
-                  var stateImage = data.state;  // Expecting a list
-                  console.log(stateImage);
+        let stepCount = 0;
+        let totalReward = 0;
+        let actionChart;
+        let currentState = null;
+        let previousState = null;
 
-                  var imageData = ctx.createImageData(108, 108);  // 108x108 resolution
-                  for (let i = 0; i < 108; i++) {
-                      for (let j = 0; j < 108; j++) {
-                          imageData.data[i * (108 * 4) + j * 4 + 0] = stateImage[i][j][0]; // R
-                          imageData.data[i * (108 * 4) + j * 4 + 1] = stateImage[i][j][1]; // G
-                          imageData.data[i * (108 * 4) + j * 4 + 2] = stateImage[i][j][2]; // B
-                          imageData.data[i * (108 * 4) + j * 4 + 3] = 255;                 // Alpha
-                      }
-                  }
-                  ctx.putImageData(imageData, 0, 0);
-              });
-      }
-      
-      // Call updateGame on page load
-      window.onload = function() {
-          updateGame();
-      };
+        function updateGame() {
+            fetch('/step')
+                .then(response => response.json())
+                .then(data => {
+                    previousState = currentState;
+                    currentState = data.state;
+                    renderGameStates();
+                    updateActionChart(data.action_probabilities);
+                    document.getElementById('actionTaken').textContent = data.action;
+                    // document.getElementById('activations').textContent = JSON.stringify(data.activations, null, 2);
+                    document.getElementById('currentReward').textContent = data.reward.toFixed(2);
+                    totalReward += data.reward;
+                    updateStats();
+                });
+        }
+
+        function renderGameStates() {
+            if (previousState) {
+                renderState('previousCanvas', previousState);
+            }
+            if (currentState) {
+                renderState('currentCanvas', currentState);
+            }
+        }
+
+        function renderState(canvasId, stateImage) {
+            var canvas = document.getElementById(canvasId);
+            var ctx = canvas.getContext('2d');
+            var imageData = ctx.createImageData(108, 108);
+            for (let i = 0; i < 108; i++) {
+                for (let j = 0; j < 108; j++) {
+                    let index = (i * 108 + j) * 4;
+                    imageData.data[index] = stateImage[i][j][0];     // R
+                    imageData.data[index + 1] = stateImage[i][j][1]; // G
+                    imageData.data[index + 2] = stateImage[i][j][2]; // B
+                    imageData.data[index + 3] = 255;                 // Alpha
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function updateActionChart(actionProbabilities) {
+            if (!actionChart) {
+                const ctx = document.getElementById('actionBarChart').getContext('2d');
+                actionChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: Object.keys(actionProbabilities),
+                        datasets: [{
+                            label: 'Action Probabilities',
+                            data: Object.values(actionProbabilities),
+                            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 1
+                            }
+                        }
+                    }
+                });
+            } else {
+                actionChart.data.datasets[0].data = Object.values(actionProbabilities);
+                actionChart.update();
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('stepCount').textContent = stepCount;
+            document.getElementById('totalReward').textContent = totalReward.toFixed(2);
+        }
+
+        function resetEnvironment() {
+            fetch('/reset')
+                .then(response => response.json())
+                .then(data => {
+                    stepCount++;
+                    totalReward = 0;
+                    currentState = data.state;
+                    previousState = null;
+                    renderGameStates();
+                    document.getElementById('actionTaken').textContent = 'None';
+                    document.getElementById('currentReward').textContent = '0.00';
+                    updateStats();
+                });
+        }
+
+        function toggleDropdown(id) {
+            const dropdown = document.getElementById(id);
+            dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+        }
+
+        document.getElementById('stepButton').addEventListener('click', updateGame);
+        document.getElementById('resetButton').addEventListener('click', resetEnvironment);
+        document.getElementById('toggleActivations').addEventListener('click', () => toggleDropdown('activationsDropdown'));
+        document.getElementById('openWeights').addEventListener('click', () => {
+            window.open('/weight_statistics', '_blank');
+        });
+
+        window.onload = resetEnvironment;
     </script>
 </body>
 </html>
-

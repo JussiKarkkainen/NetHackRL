@@ -231,7 +231,7 @@ if __name__ == "__main__":
     if not env_conf["checkpoint_path"]:
       raise Exception("No model path specified for evaluation")
     model_path = env_conf["checkpoint_path"]
-    if os.getenv("VIZ") == "1":
+    if os.getenv("RENDER") == "1":
       render_episode(model_path, score_conf, env_conf)
     else:
       evaluate_model(model_path, score_conf, env_conf)
