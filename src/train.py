@@ -41,6 +41,7 @@ def render_episode(model_path, score_conf, env_conf):
     log_probs_s = log_probs.squeeze()
     u = Tensor.uniform(shape=log_probs_s.shape)
     action = Tensor.argmax(log_probs_s - Tensor.log(-Tensor.log(u)), axis=-1)
+    print(action.item())
     
     #env.render()
     next_state, reward, terminated, truncated, info = env.step(action.item())

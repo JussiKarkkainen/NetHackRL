@@ -102,6 +102,7 @@
                 <div class="action">
                     <span class="action-arrow">→</span>
                     <span id="actionTaken">None</span>
+                    <span id="actionTakenDesc">None</span>
                 </div>
                 <div class="state">
                     <h3>Current State</h3>
@@ -137,6 +138,11 @@
         let actionChart;
         let currentState = null;
         let previousState = null;
+        let actionDesc = ["<MiscAction.MORE", "<CompassDirection.N", "<CompassDirection.E", "<CompassDirection.S", "<CompassDirection.W", 
+                          "<CompassDirection.NE", "<CompassDirection.SE", "<CompassDirection.SW", "<CompassDirection.NW", "<CompassDirectionLonger.N", 
+                          "<CompassDirectionLonger.E", "<CompassDirectionLonger.S", "<CompassDirectionLonger.W", "<CompassDirectionLonger.NE", 
+                          "<CompassDirectionLonger.SE", "<CompassDirectionLonger.SW", "<CompassDirectionLonger.NW", "<MiscDirection.UP", 
+                          "<MiscDirection.DOWN", "<MiscDirection.WAIT", "<Command.KICK", "<Command.EAT", "<Command.SEARCH"]
 
         function updateGame() {
             fetch('/step')
@@ -147,6 +153,7 @@
                     renderGameStates();
                     updateActionChart(data.action_probabilities);
                     document.getElementById('actionTaken').textContent = data.action;
+                    document.getElementById('actionTakenDesc').textContent = actionDesc[parseInt(data.action)];
                     // document.getElementById('activations').textContent = JSON.stringify(data.activations, null, 2);
                     document.getElementById('currentReward').textContent = data.reward.toFixed(2);
                     totalReward += data.reward;

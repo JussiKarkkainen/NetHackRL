@@ -179,27 +179,25 @@ class _NetHackGame:
     self.done = False
 
   def step_game(self):
-    obs = Tensor(self.state["rgb_image"]).unsqueeze(dim=0).transpose(1, 3)
-    tl = Tensor(self.state["tty_chars"][0, :]).unsqueeze(dim=0)
-    bl = Tensor(self.state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
-    prev_actions = Tensor(self.state["prev_actions"])
+    with Tensor.test():
+      obs = Tensor(self.state["rgb_image"]).unsqueeze(dim=0).transpose(1, 3)
+      tl = Tensor(self.state["tty_chars"][0, :]).unsqueeze(dim=0)
+      bl = Tensor(self.state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
+      prev_actions = Tensor(self.state["prev_actions"])
 
-    log_probs, _, (h_list, c_list) = self.model(obs, tl, bl, prev_actions, self.h, self.c)
-    log_probs_s = log_probs.squeeze()
-    u = Tensor.uniform(shape=log_probs_s.shape)
-    action = Tensor.argmax(log_probs_s - Tensor.log(-Tensor.log(u)), axis=-1)
-    
-    next_state, reward, terminated, truncated, info = self.env.step(action.item())
-    self.done = terminated or truncated
-    self.state = next_state
+      log_probs, _, (h_list, c_list) = self.model(obs, tl, bl, prev_actions, self.h, self.c)
+      self.h = h_list
+      self.c = c_list
+      log_probs_s = log_probs.squeeze()
+      u = Tensor.uniform(shape=log_probs_s.shape)
+      action = Tensor.argmax(log_probs_s - Tensor.log(-Tensor.log(u)), axis=-1)
+      
+      next_state, reward, terminated, truncated, info = self.env.step(action.item())
+      self.done = terminated or truncated
+      self.state = next_state
     return next_state, action.item(), reward, log_probs_s.numpy()
-
-@app.route('/init')
-def init():
-  global NetHackGame
-  NetHackGame = _NetHackGame("../checkpoints/run-20241009-223400.pt")
-  init_state = NetHackGame.state
-  return jsonify({"state": init_state["rgb_image"].tolist()})
+  
+NetHackGame = _NetHackGame("../checkpoints/run-20241009-223400.pt")
 
 @app.route('/')
 def main():
@@ -221,7 +219,6 @@ def weight_stats():
 
 @app.route('/reset')
 def reset():
-  global NetHackGame
   NetHackGame = _NetHackGame("../checkpoints/run-20241009-223400.pt")
   init_state = NetHackGame.state
   return jsonify({"state": init_state["rgb_image"].tolist()})
@@ -230,14 +227,7 @@ def reset():
 def step():
   state, action, reward, log_probs = NetHackGame.step_game()
   return jsonify({"state": state["rgb_image"].tolist(), "action": str(action), "reward": str(reward), "action_probabilities": log_probs.tolist()})
-  
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, threaded=False)
 
-'''
-if __name__ == "__main__":
-  visualizer = NetHackVisualizer("../checkpoints/run-20241009-223400.pt")
-  visualizer.analyze_weights()
-  visualizer.generate_html_report()
-'''
