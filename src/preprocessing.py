@@ -12,6 +12,9 @@ COLORS = ["#000000", "#800000", "#008000", "#808000", "#000080", "#800080", "#00
           "#808080", "#C0C0C0", "#FF0000", "#00FF00", "#FFFF00", "#0000FF", "#FF00FF",
           "#00FFFF", "#FFFFFF"]
 
+def normalize_image(x):
+  return x.div(255).mul(2).sub(1)
+
 def cache_ascii_char(env_conf, rescale_font_size=(9,9)):
   font = ImageFont.truetype(env_conf["font_path"], 9)
   dummy_text = "".join([(chr(i) if chr(i).isprintable() else " ") for i in range(256)])
@@ -44,25 +47,34 @@ def cache_ascii_char(env_conf, rescale_font_size=(9,9)):
 
 def preprocess_dataset(obs, cache_array):
   B, T = obs["tty_chars"].shape[:2]
-  chars = obs["tty_chars"][:, :, 1:-2, :]
-  colors = np.clip(obs["tty_colors"], 0, 15)
-  
-  # 11*chars.shape[0], 6*chars.shape[1] for full image
-  # 11 for better looking image
-  pixel_obs = np.zeros((B, T, 9*12, 9*12, 3), dtype=np.float32)
+  out_height_char = 12
+  out_width_char = 12
+
+  # Initialize the output array
+  pixel_obs = np.zeros((B, T, 9 * 12, 9 * 12, 3), dtype=np.float32)
 
   for b in range(B):
     for t in range(T):
-      for i in range(12): # chars.shape[0] for full screen
-        for j in range(12): # chars.shape[1] for full screen
-          color = colors[b, t, i, j]
-          char = cache_array[chars[b, t, i, j]][color]
-          pixel_obs[b, t, i*9:(i+1)*9, j*9:(j+1)*9, :] = char
+      out_image = np.zeros((out_height_char*9, out_width_char*9, 3), dtype=np.uint8)
+      chars = obs["tty_chars"][b, t, 1:-2, :]  
+      colors = np.clip(obs["tty_colors"][b, t], 0, 15)
+
+      center_y = obs["tty_cursor"][b, t, 0:1]
+      center_x = obs["tty_cursor"][b, t, 1:2]
+      offset_h = center_y.astype(np.int32) - 6
+      offset_w = center_x.astype(np.int32) - 6
+      preprocess_test(out_image, chars, colors, out_width_char, out_height_char, 
+                      offset_h, offset_w, cache_array)
+        
+      pixel_obs[b, t] = out_image
 
   obs["rgb_image"] = pixel_obs
+
+  # Handling previous actions
   prev_actions = Tensor.zeros_like(obs["actions"]).contiguous()
   prev_actions[:, 1:] = obs["actions"][:, :-1]
   obs["prev_actions"] = prev_actions
+
   return obs
 
 def preprocess_test(out_image, chars, colors, out_width_char, out_height_char,

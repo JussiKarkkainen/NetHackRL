@@ -8,7 +8,7 @@ import os
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 from functools import reduce
-from preprocessing import CharToImage, PrevActionsWrapper, cache_ascii_char, preprocess_dataset
+from preprocessing import CharToImage, PrevActionsWrapper, cache_ascii_char, preprocess_dataset, normalize_image
 from nld_aa_pretraining import dataset
 from models import NetHackModel
 from configs import make_configs
@@ -32,7 +32,7 @@ def render_episode(model_path, score_conf, env_conf):
   done = False
   step = 0
   while not done:
-    obs = Tensor(state["rgb_image"]).unsqueeze(dim=0).transpose(1, 3)
+    obs = normalize_image(Tensor(state["rgb_image"]).unsqueeze(dim=0)).transpose(1, 3)
     tl = Tensor(state["tty_chars"][0, :]).unsqueeze(dim=0)
     bl = Tensor(state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
     prev_actions = Tensor(state["prev_actions"])
@@ -41,20 +41,12 @@ def render_episode(model_path, score_conf, env_conf):
     log_probs_s = log_probs.squeeze()
     u = Tensor.uniform(shape=log_probs_s.shape)
     action = Tensor.argmax(log_probs_s - Tensor.log(-Tensor.log(u)), axis=-1)
-    print(action.item())
     
-    #env.render()
+    env.render()
     next_state, reward, terminated, truncated, info = env.step(action.item())
     done = terminated or truncated
     state = next_state
     step += 1
-
-    if step % 100 == 0:
-      env.render()
-      plt.imshow(state["rgb_image"], interpolation='nearest')
-      plt.show()
-      raise Exception
-
 
 @Tensor.test()
 def evaluate_model(model_path, score_conf, env_conf):
@@ -81,7 +73,7 @@ def evaluate_model(model_path, score_conf, env_conf):
     obs_tensors, tl_tensors, bl_tensors, prev_actions_tensors = [], [], [], []
     for i, (state, done) in enumerate(zip(states, dones)):
       if not done:
-        obs = Tensor(state["rgb_image"]).unsqueeze(dim=0).transpose(1, 3)
+        obs = normalize_image(Tensor(state["rgb_image"]).unsqueeze(dim=0)).transpose(1, 3)
         tl = Tensor(state["tty_chars"][0, :]).unsqueeze(dim=0)
         bl = Tensor(state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
         prev_actions = Tensor(state["prev_actions"])
@@ -117,7 +109,6 @@ def evaluate_model(model_path, score_conf, env_conf):
     if step % 10 == 0:
       print(f"Number of environments still running: {len([d for d in dones if d == False])}")
 
-
   print(f"Average reward over 10 episodes was: {sum(avg_rewards) / len(avg_rewards)}")
   with open(env_conf["eval_path"], "w") as f:
     f.write(f"Average reward over 10 episodes was: {sum(avg_rewards) / len(avg_rewards)}")
@@ -141,6 +132,7 @@ def train_bc(model, score_conf, env_conf):
     h, c = model.init_lstm(env_conf["batch_size"])
     
     obs = Tensor(preprocess_dataset(minibatch, cache_array)["rgb_image"])
+    obs = normalize_image(obs)
     tl, bl = Tensor(minibatch["tty_chars"][:, :, 0, :]), Tensor(minibatch["tty_chars"][:, :, -2:, :]).float()
     action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1], 1)
     prev_actions = minibatch["prev_actions"]

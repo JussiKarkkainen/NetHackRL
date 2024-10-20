@@ -45,7 +45,7 @@ def dataset(batch_size=32, seq_len=256):
     for minibatch in dataset:
       keypresses = Tensor(minibatch["keypresses"])
       actions = embedding_layer(keypresses).squeeze(-1)
-      m = {k: minibatch[k] for k in ["tty_chars", "tty_colors", "done"]}
+      m = {k: minibatch[k] for k in ["tty_chars", "tty_colors", "tty_cursor", "done"]}
       m["actions"] = actions
       yield m
 
