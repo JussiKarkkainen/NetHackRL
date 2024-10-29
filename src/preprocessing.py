@@ -12,9 +12,6 @@ COLORS = ["#000000", "#800000", "#008000", "#808000", "#000080", "#800080", "#00
           "#808080", "#C0C0C0", "#FF0000", "#00FF00", "#FFFF00", "#0000FF", "#FF00FF",
           "#00FFFF", "#FFFFFF"]
 
-def normalize_image(x):
-  return x.div(255).mul(2).sub(1)
-
 def cache_ascii_char(env_conf, rescale_font_size=(9,9)):
   font = ImageFont.truetype(env_conf["font_path"], 9)
   dummy_text = "".join([(chr(i) if chr(i).isprintable() else " ") for i in range(256)])
@@ -63,7 +60,8 @@ def preprocess_dataset(obs, cache_array):
       center_x = obs["tty_cursor"][b, t, 1:2]
       offset_h = center_y.astype(np.int32) - 6
       offset_w = center_x.astype(np.int32) - 6
-      preprocess_test(out_image, chars, colors, out_width_char, out_height_char, 
+
+      preprocess_char_image_cython(out_image, chars, colors, out_width_char, out_height_char, 
                       offset_h, offset_w, cache_array)
         
       pixel_obs[b, t] = out_image
@@ -110,7 +108,7 @@ class CharToImage(gym.Wrapper):
     out_height_char = 12
     out_width_char = 12
     out_image = np.zeros((out_height_char*9, out_width_char*9, 3), dtype=np.uint8)
-    obs["rgb_image"] = preprocess_test(out_image, chars, colors, out_width_char, 
+    obs["rgb_image"] = preprocess_char_image_cython(out_image, chars, colors, out_width_char, 
                                        out_height_char, offset_h, offset_w, self.cache_array)
 
   def step(self, action):

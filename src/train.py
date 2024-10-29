@@ -1,14 +1,14 @@
 import nle
 import gymnasium as gym
 import numpy as np
-from tinygrad import Tensor, nn, helpers, Device
+from tinygrad import Tensor, nn, helpers, Device, dtypes
 import wandb
 import time
 import os
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 from functools import reduce
-from preprocessing import CharToImage, PrevActionsWrapper, cache_ascii_char, preprocess_dataset, normalize_image
+from preprocessing import CharToImage, PrevActionsWrapper, cache_ascii_char, preprocess_dataset
 from nld_aa_pretraining import dataset
 from models import NetHackModel
 from configs import make_configs
@@ -20,27 +20,48 @@ def count_parameters(model):
 
 @Tensor.test()
 def render_episode(model_path, score_conf, env_conf):
-  env = gym.make(env_conf["env_name"], character=env_conf["character"])
+  env = gym.make(env_conf["env_name"], character=env_conf["character"], no_progress_timeout=150)
   env = CharToImage(env, env_conf)
   env = PrevActionsWrapper(env)
   
-  model = NetHackModel(score_conf, use_critic=False)
-  nn.state.load_state_dict(model, nn.state.safe_load(model_path))
+  model = NetHackModel(score_conf) 
+  if os.getenv("PRETRAINED"):
+    state_dict = nn.state.torch_load(model_path)["model"]
+    state_dict.popitem()
+    state_dict.popitem()
+    new_state_dict = {}
+    for k, v in state_dict.items():
+      if "screen_encoder" in k:
+        new_state_dict[k] = v
+    for k, v in state_dict.items():
+      if "topline_encoder" in k:
+        new_state_dict[k] = v
+    for k, v in state_dict.items():
+      if "bottomline_encoder" in k:
+        new_state_dict[k] = v
+    for k, v in state_dict.items():
+      if "bottomline_encoder" not in k and "screen_encoder" not in k and "topline_encoder" not in k:
+        new_state_dict[k] = v
+
+    model_sd = nn.state.get_state_dict(model)
+    state_dict_actual = {k: v for k, v in zip(model_sd.keys(), new_state_dict.values())}
+    nn.state.load_state_dict(model, state_dict_actual)
+  else:
+    nn.state.load_state_dict(model, nn.state.safe_load(model_path))
 
   state, info = env.reset()
   h, c = model.init_lstm()
   done = False
   step = 0
   while not done:
-    obs = normalize_image(Tensor(state["rgb_image"]).unsqueeze(dim=0)).transpose(1, 3)
+    obs = Tensor(state["rgb_image"]).unsqueeze(dim=0).transpose(1, 3)
     tl = Tensor(state["tty_chars"][0, :]).unsqueeze(dim=0)
     bl = Tensor(state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
     prev_actions = Tensor(state["prev_actions"])
 
-    log_probs, _, (h_list, c_list) = model(obs, tl, bl, prev_actions, h, c)
-    log_probs_s = log_probs.squeeze()
-    u = Tensor.uniform(shape=log_probs_s.shape)
-    action = Tensor.argmax(log_probs_s - Tensor.log(-Tensor.log(u)), axis=-1)
+    logits, lstm_states = model(obs, tl, bl, prev_actions, h, c)
+    action = logits.squeeze().argmax(axis=-1).cast(dtypes.int32)
+    print(action.item())
     
     env.render()
     next_state, reward, terminated, truncated, info = env.step(action.item())
@@ -50,11 +71,11 @@ def render_episode(model_path, score_conf, env_conf):
 
 @Tensor.test()
 def evaluate_model(model_path, score_conf, env_conf):
-  envs = [gym.make(env_conf["env_name"], character=env_conf["character"]) for _ in range(10)]
+  envs = [gym.make(env_conf["env_name"], character=env_conf["character"], no_progress_timeout=150) for _ in range(10)]
   envs = [CharToImage(env, env_conf) for env in envs]
   envs = [PrevActionsWrapper(env) for env in envs] 
 
-  model = NetHackModel(score_conf, use_critic=False)
+  model = NetHackModel(score_conf)
   nn.state.load_state_dict(model, nn.state.safe_load(model_path))
 
   avg_rewards = []
@@ -73,7 +94,7 @@ def evaluate_model(model_path, score_conf, env_conf):
     obs_tensors, tl_tensors, bl_tensors, prev_actions_tensors = [], [], [], []
     for i, (state, done) in enumerate(zip(states, dones)):
       if not done:
-        obs = normalize_image(Tensor(state["rgb_image"]).unsqueeze(dim=0)).transpose(1, 3)
+        obs = Tensor(state["rgb_image"]).unsqueeze(dim=0).transpose(1, 3)
         tl = Tensor(state["tty_chars"][0, :]).unsqueeze(dim=0)
         bl = Tensor(state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
         prev_actions = Tensor(state["prev_actions"])
@@ -129,19 +150,19 @@ def train_bc(model, score_conf, env_conf):
       print("Trained for {env_conf['training_steps']}, ending training")
       break
 
-    h, c = model.init_lstm(env_conf["batch_size"])
-    
+    st = time.perf_counter()
     obs = Tensor(preprocess_dataset(minibatch, cache_array)["rgb_image"])
-    obs = normalize_image(obs)
     tl, bl = Tensor(minibatch["tty_chars"][:, :, 0, :]), Tensor(minibatch["tty_chars"][:, :, -2:, :]).float()
     action_targets = minibatch["actions"].view(minibatch["actions"].shape[0]*minibatch["actions"].shape[1], 1)
     prev_actions = minibatch["prev_actions"]
+    et = time.perf_counter()
+    print(f"Preprocessing took: {et - st:.4f} seconds")
     
     with helpers.Timing("Time for update step: "):
-      loss = bc_update(model, optimizer, h, c, obs, tl, bl, action_targets, prev_actions)
+      loss = bc_update(model, optimizer, obs, tl, bl, action_targets, prev_actions)
 
     if cnt % 100 == 0:
-      accuracy = bc_accuracy(model, h, c, obs, tl, bl, action_targets, prev_actions)
+      accuracy = bc_accuracy(model, obs, tl, bl, action_targets, prev_actions)
       print(f"Accuracy on minibatch: {cnt} was {accuracy.item():.2f}%")
       if os.getenv("LOG"):
         wandb.log({"Accuracy": accuracy.item()})
@@ -149,6 +170,9 @@ def train_bc(model, score_conf, env_conf):
     if os.getenv("LOG"):
       wandb.log({"Loss": loss.item()})
 
+    if cnt % 250 == 0:
+      print("Saving latest model")
+      nn.state.safe_save(nn.state.get_state_dict(model), env_conf["default_model_path"])
 
     print(f"Loss on minibatch: {cnt} was {loss.item():.4f}")
     cnt += 1
@@ -211,9 +235,11 @@ def train_ppo(model, score_conf, env_conf):
       wandb.log({"Loss": loss.item()})
 
     et = time.perf_counter()
+    '''
     with open(env_conf["log_path"], "a") as f:
       f.write(f"Reward: {log_rewards}\n")
       f.write(f"Loss: {loss.item()}\n")
+    '''
 
     print(f"Single training step took: {et - st} seconds")
     print(f"Loss on episode: {training_step} was {loss.item():.4f}")
@@ -244,10 +270,10 @@ if __name__ == "__main__":
 
   match env_conf["alg_type"]:
     case "behavioural_cloning":
-      model = NetHackModel(score_conf, use_critic=False)
+      model = NetHackModel(score_conf)
       train_bc(model, score_conf, env_conf)
     case "ppo":
-      model = NetHackModel(score_conf, use_critic=True)
+      model = NetHackModel(score_conf)
       train_ppo(model, score_conf, env_conf)
     case _:
       raise Exception("Invalid 'alg_type' provided in the config")

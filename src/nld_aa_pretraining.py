@@ -19,7 +19,7 @@ def dataset(batch_size=32, seq_len=256):
   subselect_sql = "SELECT gameid FROM games WHERE role=? AND race=?"
   subselect_sql_args = ("Mon", "Hum")
 
-  with ThreadPoolExecutor(max_workers=10) as tp:
+  with ThreadPoolExecutor(max_workers=30) as tp:
     dataset = nld.TtyrecDataset(
       "nld_aa_actual",
       batch_size=batch_size,

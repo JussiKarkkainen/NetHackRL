@@ -53,21 +53,19 @@ def ppo_update(model, optimizer, states_rgb, states_tl, states_bl, actions,
   return loss
 
 
-
 #### Behavioral Cloning
-@TinyJit
-def bc_update(model, optimizer, h, c, obs, tl, bl, action_targets, prev_actions):
-  action_logits, _, _ = model(obs, tl, bl, prev_actions, h, c)
+# @TinyJit
+def bc_update(model, optimizer, obs, tl, bl, action_targets, prev_actions):
+  action_logits, _ = model(obs, tl, bl, prev_actions)
   action_logits = action_logits.view(action_logits.shape[0]*action_logits.shape[1], -1)
   loss = action_logits.cross_entropy(action_targets.squeeze())
   optimizer.zero_grad()
   loss.realize().backward()
-  # TODO: Tinygrad gradient clipping
   optimizer.step()
   return loss
 
-def bc_accuracy(model, h, c, obs, tl, bl, action_targets, prev_actions):
-  logits, _, (h_list, c_list) = model(obs, tl, bl, prev_actions, h, c)
+def bc_accuracy(model, obs, tl, bl, action_targets, prev_actions):
+  logits, _ = model(obs, tl, bl, prev_actions)
   B, T, D = logits.shape
   actions = logits.softmax(axis=-1).reshape(-1, D).multinomial().reshape(B, T)
   correct_predictions = (actions.reshape(-1) == action_targets.reshape(-1)).sum()

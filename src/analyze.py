@@ -185,19 +185,21 @@ class _NetHackGame:
       bl = Tensor(self.state["tty_chars"][-2:, :]).unsqueeze(dim=0).float()
       prev_actions = Tensor(self.state["prev_actions"])
 
-      log_probs, _, (h_list, c_list) = self.model(obs, tl, bl, prev_actions, self.h, self.c)
+      action_logits, _, (h_list, c_list) = self.model(obs, tl, bl, prev_actions, self.h, self.c)
       self.h = h_list
       self.c = c_list
-      log_probs_s = log_probs.squeeze()
-      u = Tensor.uniform(shape=log_probs_s.shape)
-      action = Tensor.argmax(log_probs_s - Tensor.log(-Tensor.log(u)), axis=-1)
+
+      action_logits = action_logits.view(action_logits.shape[0]*action_logits.shape[1], -1)
+      action_probs = action_logits.softmax(axis=-1).reshape(-1)
+      print(action_probs.shape)
+      action = action_probs.multinomial()
       
       next_state, reward, terminated, truncated, info = self.env.step(action.item())
       self.done = terminated or truncated
       self.state = next_state
-    return next_state, action.item(), reward, log_probs_s.numpy()
+    return next_state, action.item(), reward, action_probs.numpy()
   
-NetHackGame = _NetHackGame("../checkpoints/run-20241009-223400.pt")
+NetHackGame = _NetHackGame("../checkpoints/run-20241022-193641.pt")
 
 @app.route('/')
 def main():
@@ -219,7 +221,7 @@ def weight_stats():
 
 @app.route('/reset')
 def reset():
-  NetHackGame = _NetHackGame("../checkpoints/run-20241009-223400.pt")
+  NetHackGame = _NetHackGame("../checkpoints/run-20241022-193641.pt")
   init_state = NetHackGame.state
   return jsonify({"state": init_state["rgb_image"].tolist()})
 

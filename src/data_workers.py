@@ -2,7 +2,7 @@ import nle
 import gymnasium as gym
 import numpy as np
 from tinygrad import Tensor, nn
-from preprocessing import CharToImage, PrevActionsWrapper, normalize_image
+from preprocessing import CharToImage, PrevActionsWrapper
 from models import NetHackModel
 
 
