@@ -16,10 +16,10 @@ def dataset(batch_size=32, seq_len=256):
 
   db_conn = nld.db.connect(filename=dbfilename)
 
-  subselect_sql = "SELECT gameid FROM games WHERE role=? AND race=?"
-  subselect_sql_args = ("Mon", "Hum")
+  subselect_sql = "SELECT gameid FROM games WHERE role=? AND race=? AND align=?"
+  subselect_sql_args = ("Mon", "Hum", "Neu")
 
-  with ThreadPoolExecutor(max_workers=10) as tp:
+  with ThreadPoolExecutor(max_workers=30) as tp:
     dataset = nld.TtyrecDataset(
       "nld_aa_actual",
       batch_size=batch_size,
@@ -32,12 +32,12 @@ def dataset(batch_size=32, seq_len=256):
       threadpool=tp
     )
 
-    print(f"Human Monk dataset has: {len(dataset._gameids)} games.")
+    print(f"Human Monk Neu dataset has: {len(dataset._gameids)} games.")
 
-    env = NetHackScore(savedir=None, character="@")
-    embed_actions = Tensor.zeros((256, 1))
+    env = NetHackChallenge(savedir=None, character="mon-hum-neu")
+    embed_actions = Tensor.zeros((256, 1)).contiguous()
     for i, a in enumerate(env.actions):
-      embed_actions[a.value][0] = i
+      embed_actions[a.value, 0] = i
 
     embedding_layer = nn.Embedding(256, 1)
     embedding_layer.weight = embed_actions
@@ -45,7 +45,7 @@ def dataset(batch_size=32, seq_len=256):
     for minibatch in dataset:
       keypresses = Tensor(minibatch["keypresses"])
       actions = embedding_layer(keypresses).squeeze(-1)
-      m = {k: minibatch[k] for k in ["tty_chars", "tty_colors", "done"]}
+      m = {k: minibatch[k] for k in ["tty_chars", "tty_colors", "tty_cursor", "done"]}
       m["actions"] = actions
       yield m
 

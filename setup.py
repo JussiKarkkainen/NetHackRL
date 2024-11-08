@@ -1,5 +1,5 @@
-from setuptools import setup, Extension
 from Cython.Build import cythonize
+from setuptools import setup, Extension, find_packages
 import numpy as np
 import os
 
@@ -16,5 +16,6 @@ extensions = [
 setup(
     ext_modules=cythonize(extensions),
     package_dir={"": "src"},  
-    packages=["preprocess_cython"],  
+    packages=find_packages(where="src"),
+    include_package_data=True,
 )

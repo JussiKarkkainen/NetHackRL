@@ -27,7 +27,7 @@ def data_worker(env_conf, score_conf, data_queue):
 
     step = 0
     while not done and step < 48:# env_conf["max_env_steps"]:
-      rgb_image = Tensor(state["rgb_image"]).unsqueeze(0).permute(0, 3, 1, 2) # B, C, H, W
+      rgb_image = normalize_image(Tensor(state["rgb_image"]).unsqueeze(0)).permute(0, 3, 1, 2) # B, C, H, W
       tl, bl = Tensor(state["tty_chars"][0, :]).unsqueeze(0), Tensor(state["tty_chars"][-2:, :]).float().unsqueeze(0)
       prev_action = Tensor(state["prev_actions"]).unsqueeze(dim=0)
 
