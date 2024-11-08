@@ -8,6 +8,8 @@ from matplotlib import pyplot as plt
 from preprocess_cython.preprocess import preprocess_char_image_cython
 import time
 
+from nle.nethack import tty_render
+
 COLORS = ["#000000", "#800000", "#008000", "#808000", "#000080", "#800080", "#008080",
           "#808080", "#C0C0C0", "#FF0000", "#00FF00", "#FFFF00", "#0000FF", "#FF00FF",
           "#00FFFF", "#FFFFFF"]
@@ -41,7 +43,7 @@ def cache_ascii_char(env_conf, rescale_font_size=(9,9)):
       
       char_array[char_index, color_index] = arr
   return char_array
-
+    
 def preprocess_dataset(obs, cache_array):
   B, T = obs["tty_chars"].shape[:2]
   out_height_char = 12
@@ -54,7 +56,7 @@ def preprocess_dataset(obs, cache_array):
     for t in range(T):
       out_image = np.zeros((out_height_char*9, out_width_char*9, 3), dtype=np.uint8)
       chars = obs["tty_chars"][b, t, 1:-2, :]  
-      colors = np.clip(obs["tty_colors"][b, t], 0, 15)
+      colors = np.clip(obs["tty_colors"][b, t, 1:-2, :], 0, 15)
 
       center_y = obs["tty_cursor"][b, t, 0:1]
       center_x = obs["tty_cursor"][b, t, 1:2]
@@ -77,6 +79,8 @@ def preprocess_dataset(obs, cache_array):
 
 def preprocess_test(out_image, chars, colors, out_width_char, out_height_char,
                     offset_h, offset_w, cache_array):
+  char_height = cache_array.shape[3]
+  char_width = cache_array.shape[4]
   for h in range(out_height_char):
     h_char = h + offset_h
     if h_char < 0 or h_char >= chars.shape[0]:
@@ -87,9 +91,9 @@ def preprocess_test(out_image, chars, colors, out_width_char, out_height_char,
         continue
       char = chars[h_char, w_char]
       color = colors[h_char, w_char]
-      h_pixel = h * 9
-      w_pixel = w * 9
-      out_image[h_pixel : h_pixel + 9, w_pixel : w_pixel + 9, :] = cache_array[char, color]
+      h_pixel = h * char_height
+      w_pixel = w * char_width
+      out_image[h_pixel:h_pixel + 9, w_pixel:w_pixel + 9, :] = cache_array[char, color]
 
   return out_image
 

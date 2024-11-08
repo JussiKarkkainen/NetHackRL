@@ -16,8 +16,8 @@ def dataset(batch_size=32, seq_len=256):
 
   db_conn = nld.db.connect(filename=dbfilename)
 
-  subselect_sql = "SELECT gameid FROM games WHERE role=? AND race=?"
-  subselect_sql_args = ("Mon", "Hum")
+  subselect_sql = "SELECT gameid FROM games WHERE role=? AND race=? AND align=?"
+  subselect_sql_args = ("Mon", "Hum", "Neu")
 
   with ThreadPoolExecutor(max_workers=30) as tp:
     dataset = nld.TtyrecDataset(
@@ -32,9 +32,9 @@ def dataset(batch_size=32, seq_len=256):
       threadpool=tp
     )
 
-    print(f"Human Monk dataset has: {len(dataset._gameids)} games.")
+    print(f"Human Monk Neu dataset has: {len(dataset._gameids)} games.")
 
-    env = NetHackScore(savedir=None, character="mon-hum-neu-mal")
+    env = NetHackChallenge(savedir=None, character="mon-hum-neu")
     embed_actions = Tensor.zeros((256, 1)).contiguous()
     for i, a in enumerate(env.actions):
       embed_actions[a.value, 0] = i

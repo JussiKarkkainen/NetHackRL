@@ -1,5 +1,7 @@
 from tinygrad import Tensor, nn, dtypes, TinyJit
 
+
+############# CDGPT-5 ###############
 class NetHackEncoder:
   def __init__(self, conv_channels, fc_dims, bl_conv_dims):
     self.screen_convs = []
@@ -129,3 +131,5 @@ class NetHackModel:
   def __call__(self, image, tl, bl, prev_actions, state=None):
     logits, new_state = self.recurrent(self.encode(image, tl, bl, prev_actions), state)
     return logits, new_state
+
+
